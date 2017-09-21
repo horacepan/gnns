@@ -109,5 +109,5 @@ def main(picklefile, logfile=None):
 
 if __name__ == '__main__':
     LOGFILE = '/local/hopan/scratch/log.txt'
-    PICKLEFILE ='/stage/risigroup/NIPS-2017/Experiments-Gabor/data/gabor.pickle'
+    PICKLEFILE ='data/qm9.pickle'
     main(PICKLEFILE, LOGFILE)
