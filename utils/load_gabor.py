@@ -9,11 +9,6 @@ from graph import AdjGraph
 import time
 import pdb
 
-ADJ_INDEX = 0
-LABEL_INDEX = 1
-LABEL_DICT_INDEX = 2
-TARGET_INDEX = 3
-
 # DICT KEYS for the pickle file
 ADJ_KEY = 'adj_lists'
 LABEL_KEY = 'labels'
@@ -30,8 +25,14 @@ def load_pickle(fname):
 
 def load_graphs_targets_pickle(picklefile):
     data = load_pickle(picklefile)
-    adjs = gen_graph_list(data['adj_lists'], data['labels'], data['unique_labels_dict'])
-    return adjs, data['targets']
+    adjs = gen_graph_list(data[ADJ_KEY], data[LABEL_KEY], data[UNIQUE_LABELS_KEY])
+    return adjs, data[TARGET_KEY]
+
+# Return a list of AdjGraph objects given a list of adj_lists and labels for the graphs.
+def gen_graph_list(adj_list, labels, labels_dict):
+    assert len(adj_list) == len(labels)
+    return [AdjGraph(adj_list=al, labels=l, labels_dict=labels_dict)
+            for (al, l) in zip(adj_list, labels)]
 
 def subindex(arr, indices):
     if type(arr) == list:
@@ -49,13 +50,7 @@ def manual_split(*arrays, **options):
     iterable = ((subindex(a, train), subindex(a, test)) for a in arrays)
     return list(chain.from_iterable(iterable))
 
-# Return a list of AdjGraph objects given a list of adj_lists and labels for the graphs.
-def gen_graph_list(adj_list, labels, labels_dict):
-    assert len(adj_list) == len(labels)
-    return [AdjGraph(adj_list=al, labels=l, labels_dict=labels_dict)
-            for (al, l) in zip(adj_list, labels)]
-
-def load_dataset(pickle_file='', graph_file='', label_file='', target_file='', n=-1):
+def _load_dataset(pickle_file='', graph_file='', label_file='', target_file='', n=-1):
     if '.pickle' in pickle_file:
         with open(pickle_file, 'r') as f:
             # pickle with the keys: adj_lists, labels, targets, unique_labels_dict
@@ -68,6 +63,7 @@ def load_dataset(pickle_file='', graph_file='', label_file='', target_file='', n
         graph_list = gen_graph_list(adj_lists, labels, labels_dict)
     return graph_list, targets
 
+# TODO: Clean
 # we don't wrap the adj graphs, labels, labels dict when pickling b/c pickle doesn't play
 # nicely with classes
 def make_small_pickle(sizes=None, pickle_file=''):
@@ -102,17 +98,16 @@ def gen_nbrs_list(adj_graphs):
 
 def make_pickle_dict(adj_lists, labels, targets, unique_labels_dict, size=None):
     assert len(adj_lists) == len(labels) and len(labels) == len(targets)
-    if size:
-        n = size
-    else:
-        n = len(adj_lists)
+    n = size if size else len(adj_lists)
+
     return {
-        'adj_lists': adj_lists[:n],
-        'labels': labels[:n],
-        'targets': targets[:n],
-        'unique_labels_dict': unique_labels_dict
+        ADJ_KEY: adj_lists[:n],
+        LABEL_KEY: labels[:n],
+        TARGET_KEY: targets[:n],
+        UNIQUE_LABELS_KEY: unique_labels_dict
     }
 
+# TODO: Clean this
 def make_pickles():
     gname = '/home/hopan/mrg/Gabor/gabor/gabor.graph'
     lname = '/home/hopan/mrg/Gabor/gabor/gabor.atoms'
@@ -134,49 +129,3 @@ def make_pickles():
     }
     make_pickle('tot_energy.pickle', pickle_obj)
     print("Done pickling dictionary")
-
-if __name__ == '__main__':
-    dataset = sys.argv[1]
-    gname_gabor = '/home/hopan/mrg/Gabor/gabor/gabor.graph'
-    gname_hcep = '/stage/risigroup/NIPS-2017/Experiments-HCEP/data/hcep.nips.graph'
-    gname_nci = '/stage/risigroup/NIPS-2017/Experiments-NCI/data/NCI.graph'
-    lname_gabor = '/home/hopan/mrg/Gabor/gabor/gabor.atoms'
-    lname_hcep = '/stage/risigroup/NIPS-2017/Experiments-HCEP/data/hcep.nips.atoms'
-    lname_nci = '/stage/risigroup/NIPS-2017/Experiments-NCI/data/NCI.atoms'
-    tname_gabor = '/home/hopan/mrg/Gabor/gabor/gabor.target'
-    tname_hcep = '/stage/risigroup/NIPS-2017/Experiments-HCEP/data/hcep.nips.pce'
-    tname_nci = '/stage/risigroup/NIPS-2017/Experiments-NCI/data/NCI.target'
-
-    if dataset == 'Gabor':
-        gname = gname_gabor
-        lname = lname_gabor
-        tname = tname_gabor
-    elif dataset == 'HCEP':
-        gname = gname_hcep
-        lname = lname_hcep
-        tname = tname_hcep
-
-    elif dataset == 'NCI':
-        gname = gname_nci
-        lname = lname_nci
-        tname = tname_nci
-    else:
-
-        print("Not a valid dataset")
-    #graph_list, t = load_dataset(graph_file=gname, label_file=lname, target_file=tname, n=3)
-    start = time.time()
-    adj_lists = load_adj_lists(gname, n=10000)
-    if dataset == 'NCI':
-        labels, ld = load_nci_labels(lname, n=10000)
-    else:
-        labels, ld = load_discrete_labels(lname, n=10000)
-    targets = load_targets(tname, n=10000)
-    #load_graphs_targets_pickle('hcep.pickle')
-    elapsed = time.time() - start
-    print("Load time: %.2f" %elapsed)
-
-
-    for size in [1000, 10000]:
-        pickle_dict_small = make_pickle_dict(adj_lists, labels, targets, ld, size=size)
-        pickle_fname = "/stage/risigroup/NIPS-2017/Experiments-%s/data/%s_%d.pickle" %(dataset,dataset.lower(), size)
-        make_pickle(pickle_fname, pickle_dict_small)

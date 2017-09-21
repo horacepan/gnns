@@ -97,21 +97,6 @@ def load_nci_labels(fname, n=-1):
         labels_dict = { val: index for index, val in enumerate(sorted(unique_labels)) }
         return graph_labels, labels_dict
 
-def load_vec_labels(fname, n=-1):
-    with open(fname, 'r') as f:
-        total_labels = int(f.readline().strip())
-        if n < 0:
-            n = total_labels
-
-        labels = []
-        # TODO: figure out the interface for this
-        '''
-        while len(labels) < n:
-            labels_size = int(f.readline().strip())
-            labels.append(f.readline().strip().split())
-        '''
-        return labels
-
 def load_targets(fname, skiprows=1, n=-1):
     # TODO: just read n lines instead of loading everything and slicing
     all_targets = np.loadtxt(fname, skiprows=skiprows)
@@ -127,9 +112,6 @@ if __name__ == '__main__':
     lname_nci = '/stage/risigroup/NIPS-2017/Experiments-NCI/data/NCI.atoms'
     #graphs = load_adj_matrices(gname, 3)
     #nbrs = load_adj_lists(gname, 3)
-    start =time.time()
     labels, ld = load_nci_labels(lname_nci)
-    elapsed=time.time() - start
     print("elapsed: %.2f" %elapsed)
     #targets = load_targets(tname, 3)
-    pdb.set_trace()
