@@ -1,10 +1,14 @@
 import numpy as np
 import pdb
 import time
+
 def load_adj_matrices(fname, n=-1):
     '''
-    fname: string of the file name to read from
-    n: number of graphs to load. If it's -1, load the entire file
+    Args:
+        fname: string of the file name to read from
+        n: number of graphs to load. If it's < 0, load the entire file
+    Returns:
+        list of adjacency matrices(numpy arrays)
     The file given must be of the format:
     1st line = number of graphs
     Then for each graph, the file contains a line denoting the size of the graph.
@@ -27,7 +31,17 @@ def load_adj_matrices(fname, n=-1):
                 print("Done reading: %d / %d" %(len(all_adj_mats), n))
         return all_adj_mats
 
+
 def load_adj_lists(fname, n=-1):
+    '''
+    Args:
+        fname: string of filename to read from
+        n: number of graphs to load. If it's < 0, load the entire file
+    Returns:
+        list of list of ints(denoting the neighbors)
+        Ex: The fully connected graph C_4 will return
+        [[1,2,3], [0, 2, 3], [0, 1, 3], [0, 1, 2]]
+    '''
     with open(fname, 'r') as f:
         total_graphs = int(f.readline().strip())
         if n < 0:
@@ -46,11 +60,14 @@ def load_adj_lists(fname, n=-1):
                 print("Done reading: %d / %d" %(len(all_adj_lists), n))
         return all_adj_lists
 
+
 def load_discrete_labels(fname, n=-1):
     '''
-    fname: string of the file to read from
-    n: number of labels to load. If it's less than 0, load everything.
-    Returns: a tuple of a list of the labels and a sorted list of the unique labels
+    Args:
+        fname: string of the file to read from
+        n: number of labels to load. If it's less than 0, load everything.
+    Returns:
+        a tuple of a list of the labels and a sorted list of the unique labels
     '''
     with open(fname, 'r') as f:
         total_labels = int(f.readline().strip())
@@ -71,47 +88,37 @@ def load_discrete_labels(fname, n=-1):
         labels_dict = { val: index for index, val in enumerate(sorted(unique_labels)) }
         return graph_labels, labels_dict
 
-def load_nci_labels(fname, n=-1):
+
+def load_targets(fname, n=-1, dtype=float):
     '''
-    fname: string of the file to read from
-    n: number of labels to load. If it's less than 0, load everything.
-    Returns: a tuple of a list of the labels and a sorted list of the unique labels
+    Args:
+        fname: string of the file to read from
+        n: number of labels to load. If it's less than 0, load everything.
+    Returns:
+        numpy array of the target values(floats)
     '''
-    with open(fname, 'r') as f:
-        total_labels = int(f.readline().strip())
-        if n < 0:
-            n = total_labels
-
-        graph_labels = []
-        unique_labels = set()
-
-        while len(graph_labels) < n:
-            labels_size = int(f.readline().strip())
-            curr_label = f.readline().strip().split()
-            curr_label = map(lambda x: x if '.' not in x else x[:x.index('.')], curr_label)
-            graph_labels.append(curr_label)
-            # |= is the union operator
-            unique_labels |= set(curr_label)
-        # make a dictionary out of it?
-
-        labels_dict = { val: index for index, val in enumerate(sorted(unique_labels)) }
-        return graph_labels, labels_dict
-
-def load_targets(fname, skiprows=1, n=-1):
     # TODO: just read n lines instead of loading everything and slicing
-    all_targets = np.loadtxt(fname, skiprows=skiprows)
-    if n < 0:
-        return all_targets
-    print('read targets n: ', n)
-    return all_targets[:n]
+    with open(fname, 'r') as f:
+        total_labels = int(f.readline().strip())
+        assert total_labels > n
+        labels = np.zeros(n)
+
+        for i in range(n):
+            labels[i] = dtype(f.readline().strip())
+
+        return labels
 
 if __name__ == '__main__':
-    gname = '/home/hopan/mrg/Gabor/gabor/gabor.graph'
-    lname = '/home/hopan/mrg/Gabor/gabor/gabor.atoms'
-    tname = '/home/hopan/mrg/Gabor/gabor/gabor.target'
-    lname_nci = '/stage/risigroup/NIPS-2017/Experiments-NCI/data/NCI.atoms'
-    #graphs = load_adj_matrices(gname, 3)
-    #nbrs = load_adj_lists(gname, 3)
-    labels, ld = load_nci_labels(lname_nci)
+    gname = '/stage/risigroup/NIPS-2017/Experiments-Gabor/data/gabor.graph'
+    lname = '/stage/risigroup/NIPS-2017/Experiments-Gabor/data/gabor.atoms'
+    tname = '/stage/risigroup/NIPS-2017/Experiments-Gabor/data/gabor.target'
+
+    start = time.time()
+    size = 3
+    graphs = load_adj_matrices(gname, size)
+    nbrs = load_adj_lists(gname, size)
+    labels, ld = load_discrete_labels(lname, size)
+    targets = load_targets(tname, size, dtype=float)
+    elapsed = time.time() - start
     print("elapsed: %.2f" %elapsed)
-    #targets = load_targets(tname, 3)
+    pdb.set_trace()
