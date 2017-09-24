@@ -7,12 +7,10 @@ def load_adj_matrices(fname, n=-1):
     Args:
         fname: string of the file name to read from
         n: number of graphs to load. If it's < 0, load the entire file
-    Returns:
-        list of adjacency matrices(numpy arrays)
-    The file given must be of the format:
-    1st line = number of graphs
-    Then for each graph, the file contains a line denoting the size of the graph.
-    The next n lines(where n is the size of the graph) give the adjacency
+    Returns: list of adjacency matrices(numpy arrays)
+        The file given must be of the format: 1st line = number of graphs
+        Then for each graph, the file contains a line denoting the size of the graph.
+        The next n lines(where n is the size of the graph) give the adjacency
         matrix of the graph.
     '''
     with open(fname, 'r') as f:
@@ -28,7 +26,7 @@ def load_adj_matrices(fname, n=-1):
                 adj_mat[i, :] = map(int, f.readline().strip().split())
             all_adj_mats.append(adj_mat)
             if len(all_adj_mats) % 2000 == 0 and len(all_adj_mats) > 0:
-                print("Done reading: %d / %d" %(len(all_adj_mats), n))
+                print("Done readings: %d / %d" %(len(all_adj_mats), n))
         return all_adj_mats
 
 
@@ -44,6 +42,7 @@ def load_adj_lists(fname, n=-1):
     '''
     with open(fname, 'r') as f:
         total_graphs = int(f.readline().strip())
+        print "n is: {}".format(n)
         if n < 0:
             n = total_graphs
 
@@ -100,6 +99,8 @@ def load_targets(fname, n=-1, dtype=float):
     # TODO: just read n lines instead of loading everything and slicing
     with open(fname, 'r') as f:
         total_labels = int(f.readline().strip())
+        if n < 0:
+            n = total_labels
         assert total_labels > n
         labels = np.zeros(n)
 
@@ -109,9 +110,9 @@ def load_targets(fname, n=-1, dtype=float):
         return labels
 
 if __name__ == '__main__':
-    gname = '/stage/risigroup/NIPS-2017/Experiments-Gabor/data/gabor.graph'
-    lname = '/stage/risigroup/NIPS-2017/Experiments-Gabor/data/gabor.atoms'
-    tname = '/stage/risigroup/NIPS-2017/Experiments-Gabor/data/gabor.target'
+    gname = '../data/qm9.graph'
+    lname = '../data/qm9.atoms'
+    tname = '../data/qm9.target'
 
     start = time.time()
     size = 3

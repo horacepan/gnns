@@ -5,8 +5,7 @@ from torch.autograd import Variable
 import torch.nn as nn
 import torch.nn.functional as F
 import utils
-from utils.load_gabor import _load_dataset, load_graphs_targets_pickle, manual_split
-from utils.load import train_val_test_dataset
+from utils.load_data import train_val_test_dataset
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
 from sklearn.metrics import mean_squared_error
@@ -74,8 +73,8 @@ def main(picklefile, logfile=None):
     log("Starting to load data")
 
     # data is a dict of train/validation/test graphs, and train/val/test target values
-    # keys: g_train/g_val/g_test, y_train/y_val/y_test
-    # g_train/g_val/g_test: list of Graph objects
+    # keys: graphs_train, graphs_val, graphs_test, y_train, y_val, y_test
+    # graphs_train/graphs_val/graphs_test: list of Graph objects
     # y_train/y_val/y_test: numpy arrays
     data = train_val_test_dataset(picklefile, train_frac=0.1,
                                   val_frac=0.1, seed=42)
@@ -84,10 +83,10 @@ def main(picklefile, logfile=None):
     model = make_model(args.hidden, args.levels)
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
     criterion = nn.MSELoss()
-    log("About to start training")
+    log("Starting training...")
     for epoch in range(args.epochs):
-        for i in range(0, len(data['g_train']), args.batchsize):
-            g_batch = data['g_train'][i:i+args.batchsize]
+        for i in range(0, len(data['graphs_train']), args.batchsize):
+            g_batch = data['graphs_train'][i:i+args.batchsize]
             y_batch = Variable(torch.Tensor(data['y_train'][i:i+args.batchsize]))
 
             optimizer.zero_grad()
@@ -97,15 +96,15 @@ def main(picklefile, logfile=None):
             optimizer.step()
             if i % 1000 == 0 and i > 0:
                 log('   Epoch {} | Batch {} | loss: {:.3f}'.format(epoch, i, loss.data[0]))
-        train_res = eval_model(model, data['g_train'], data['y_train'])
-        val_res = eval_model(model, data['g_val'], data['y_val'])
+        train_res = eval_model(model, data['graphs_train'], data['y_train'])
+        val_res = eval_model(model, data['graphs_val'], data['y_val'])
         print_epoch_results(epoch, train_res, val_res)
 
         # Stop training if the validation error stops decreasing
         if val_res['rmse'] > prev_val_rmse and epoch > 4: # do at least 5 epochs
             break
 
-        data['g_train'], data['y_train'] = shuffle(data['g_train'], data['y_train'])
+        data['graphs_train'], data['y_train'] = shuffle(data['graphs_train'], data['y_train'])
 
 if __name__ == '__main__':
     LOGFILE = '/local/hopan/scratch/log.txt'
