@@ -221,12 +221,10 @@ if __name__ == '__main__':
     gname = '../data/qm9.graph'
     lname = '../data/qm9.atoms'
     tname = '../data/qm9.target'
-    pickle_name = '../data/testpickle.pickle'
-    size = 100
+    try:
+        size = sys.argv[1]
+    except:
+        print "Please enter the number of datapoints from the qm9 dataset to pickle."
+        exit(0)
+    pickle_name = '../data/testpickle_{}.pickle'.format(size)
     make_dataset_pickle(gname, lname, tname, pickle_name, size)
-
-    # Then load the train/val/test set from the pickle file we just made
-    train_frac = 0.2
-    val_frac = 0.2
-    dataset = train_val_test_dataset(pickle_name, train_frac, val_frac, seed=42)
-    pdb.set_trace()

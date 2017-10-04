@@ -22,6 +22,8 @@ class AdjGraph(object):
         self.size = len(labels)
         self.vertices = range(self.size)
         self.vertex_labels = {}
+        self.adj = np.zeros((self.size, self.size))
+        self.feature_mat = np.zeros((self.size, len(labels_dict)))
         max_labels = len(labels_dict)
 
         if adj_list:
@@ -41,6 +43,11 @@ class AdjGraph(object):
             #    for label in labels_dict.key():
             #        rand_orth_features[label] = np.random.normal(max_labels)
             #        rand_orth_features[label] /= np.linalg.norm(rand_orth_features[label])
+
+        for i in range(self.size):
+            # self.neighbors[i] is a list of neighbors of i
+            self.adj[i][self.neighbors[i]]= 1
+            self.feature_mat[i] = self.vertex_labels[i]
 
     def get_label(self, v):
         '''

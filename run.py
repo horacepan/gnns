@@ -9,7 +9,8 @@ from utils.load_data import train_val_test_dataset
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
 from sklearn.metrics import mean_squared_error
-from models.molecfingerprint import MolecFingerprintNet
+from models.molecfingerprint import MolecFingerprintNet, MolecFingerprintNet_Adj
+
 import argparse
 import torch.optim as optim
 import pdb
@@ -56,19 +57,21 @@ def get_args():
 
 def make_model(hidden_size, levels):
     nfeatures = 5 #C, H, O, F, N
-    model = MolecFingerprintNet(levels, nfeatures, hidden_size, F.relu)
+    #model = MolecFingerprintNet(levels, nfeatures, hidden_size, F.relu)
+    model = MolecFingerprintNet_Adj(levels, nfeatures, hidden_size, F.relu)
+
     return model
 
 def print_epoch_results(epoch, train_results, val_results):
     result =  "Epoch {} | train rmse: {:.3f} train mae: {:.3f}"
     result += "| val rmse: {:.3f} val mae: {:.3f}"
-    result.format(epoch, train_results['rmse'], train_results['mae'],
-                  val_results['rmse'], val_results['mae'])
-    print result
+    result = result.format(epoch, train_results['rmse'], train_results['mae'],
+                           val_results['rmse'], val_results['mae'])
+    # assume the logger has been instantiated?
+    log(result)
 
 
 def main(picklefile, logfile=None):
-    log = get_logger(logfile)
     args = get_args()
     log("Starting to load data")
 
@@ -83,6 +86,7 @@ def main(picklefile, logfile=None):
     model = make_model(args.hidden, args.levels)
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
     criterion = nn.MSELoss()
+    prev_val_rmse = float('inf')
     log("Starting training...")
     for epoch in range(args.epochs):
         for i in range(0, len(data['graphs_train']), args.batchsize):
@@ -101,12 +105,15 @@ def main(picklefile, logfile=None):
         print_epoch_results(epoch, train_res, val_res)
 
         # Stop training if the validation error stops decreasing
-        if val_res['rmse'] > prev_val_rmse and epoch > 4: # do at least 5 epochs
+        if val_res['rmse'] > prev_val_rmse and epoch > 20: # do at least 5 epochs
             break
 
         data['graphs_train'], data['y_train'] = shuffle(data['graphs_train'], data['y_train'])
+        prev_val_rmse = val_res['rmse']
 
 if __name__ == '__main__':
     LOGFILE = '/local/hopan/scratch/log.txt'
+    #PICKLEFILE ='data/testpickle_20000.pickle'
     PICKLEFILE ='data/qm9.pickle'
+    log = get_logger(LOGFILE)
     main(PICKLEFILE, LOGFILE)

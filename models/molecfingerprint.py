@@ -2,6 +2,7 @@ import torch
 from torch.autograd import Variable
 import torch.nn as nn
 import torch.nn.functional as F
+import pdb
 
 def gen_w_sizes(input_features, hidden_size, levels):
     w_sizes = {i: {'in': hidden_size, 'out': hidden_size} for i in range(1, levels + 1)}
@@ -39,9 +40,8 @@ class MolecFingerprintNet(nn.Module):
     def forward(self, graphs):
         num_graphs = len(graphs)
         fingerprints = Variable(torch.zeros([num_graphs, self.h_sizes[1]['out']]))
-
         for i, graph in enumerate(graphs):
-            vertex_features = {v: Variable(torch.Tensor(graph.get_label(v))).unsqueeze(0)
+            vertex_features = {v: Variable(torch.Tensor(graph.get_label(v)), requires_grad=False).unsqueeze(0)
                                for v in graph.vertices}
             curr_lvl_features = {}
             for lvl in range(1, self.levels + 1):
@@ -68,3 +68,23 @@ class MolecFingerprintNet(nn.Module):
         assert lvl <= self.levels
         return getattr(self, 'H_%d' %lvl)
 
+class MolecFingerprintNet_Adj(MolecFingerprintNet):
+    def forward(self, graphs):
+        num_graphs = len(graphs)
+        fingerprints = Variable(torch.zeros([num_graphs, self.h_sizes[1]['out']]))
+
+        for i, graph in enumerate(graphs):
+            graph_feat_tensor = Variable(torch.Tensor(graph.feature_mat), requires_grad=False)
+            adj_mat = Variable(torch.Tensor(graph.adj), requires_grad=False)
+            curr_lvl_features = {}
+            for lvl in range(1, self.levels + 1):
+                # sum neighboring vertices features
+                aggregate = adj_mat.matmul(graph_feat_tensor)
+                hidden_activation = self.get_h(lvl)(aggregate)
+                new_vtx_feature = self.activation_func(hidden_activation)
+                sparse_output = F.softmax(self.get_w(lvl)(new_vtx_feature))
+                fingerprints[i] = sparse_output.sum(dim=0)
+                graph_feat_tensor = new_vtx_feature
+
+        output = self.fc_output(fingerprints)
+        return output
