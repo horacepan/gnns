@@ -42,7 +42,7 @@ def logline(line, logfile):
         line: string message to print out to console
         logfile: string of filename to write the input line into
     '''
-    line = time.strftime('[%H:%M:%S] ') + line
+    line = time.strftime('[%H:%M:%S] ') + str(line)
     print(line)
 
     # dont write to file if log file is given
@@ -117,11 +117,14 @@ def main():
     # keys: graphs_train, graphs_val, graphs_test, y_train, y_val, y_test
     # graphs_train/graphs_val/graphs_test: list of Graph objects
     # y_train/y_val/y_test: numpy arrays
+    log("Starting to load data from: {}".format(args.dataset))
     data = train_val_test_dataset(args.dataset, train_frac=0.1,
                                   val_frac=0.1, seed=42)
 
     log("Done loading data")
     model = make_model(args.hidden, args.levels)
+    log(model)
+
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
     criterion = nn.MSELoss()
     prev_val_mse = float('inf')
