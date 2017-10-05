@@ -74,6 +74,7 @@ class MolecFingerprintNet_Adj(MolecFingerprintNet):
         fingerprints = Variable(torch.zeros([num_graphs, self.h_sizes[1]['out']]))
 
         for i, graph in enumerate(graphs):
+            #graph_feat_tensor = Variable(torch.Tensor(graph.feature_mat), requires_grad=False)
             graph_feat_tensor = Variable(torch.Tensor(graph.feature_mat), requires_grad=False)
             adj_mat = Variable(torch.Tensor(graph.adj), requires_grad=False)
             curr_lvl_features = {}
