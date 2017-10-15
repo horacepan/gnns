@@ -1,11 +1,11 @@
 import sys
 import numpy as np
 from itertools import chain
-from file_io import *
+from .file_io import *
 from six.moves import cPickle as pickle
 from sklearn.utils import shuffle
 from sklearn.model_selection import train_test_split as sk_train_test_split
-from graph import AdjGraph
+from .graph import AdjGraph
 import time
 import pdb
 
@@ -224,7 +224,7 @@ if __name__ == '__main__':
     try:
         size = sys.argv[1]
     except:
-        print "Please enter the number of datapoints from the qm9 dataset to pickle."
+        print("Please enter the number of datapoints from the qm9 dataset to pickle.")
         exit(0)
     pickle_name = '../data/testpickle_{}.pickle'.format(size)
     make_dataset_pickle(gname, lname, tname, pickle_name, size)

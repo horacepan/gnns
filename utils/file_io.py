@@ -42,7 +42,7 @@ def load_adj_lists(fname, n=-1):
     '''
     with open(fname, 'r') as f:
         total_graphs = int(f.readline().strip())
-        print "n is: {}".format(n)
+        print("n is: {}".format(n))
         if n < 0:
             n = total_graphs
 
@@ -51,7 +51,7 @@ def load_adj_lists(fname, n=-1):
             graph_size = int(f.readline().strip())
             graph_adj_list = []
             for i in range(graph_size):
-                row = map(int, f.readline().strip().split())
+                row = list(map(int, f.readline().strip().split()))
                 i_nbrs = [j for j in range(len(row)) if row[j] > 0]
                 graph_adj_list.append(i_nbrs)
             all_adj_lists.append(graph_adj_list)
