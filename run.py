@@ -78,8 +78,8 @@ def get_args():
     parser.add_argument("-l", dest="levels", type=int, help="number of layers", default=2)
     parser.add_argument("-hi",dest="hidden", type=int, help="size of hidden layers", default=5)
     parser.add_argument("-bs", dest="batchsize", type=int, help="batch size", default=1)
-    parser.add_argument("-e", dest="epochs", type=int, help="max epochs", default=10)
-    parser.add_argument("-me", dest="max_epochs", type=int, help="max epochs", default=100)
+    parser.add_argument("-e", dest="max_epochs", type=int, help="max epochs", default=10)
+    parser.add_argument("-me", dest="min_epochs", type=int, help="min epochs", default=5)
     parser.add_argument("-lr",dest="learning_rate", type=float, help="initial learning rate",
                         default=0.001)
     parser.add_argument("-s",dest="seed", type=int, help="random seed", default=42)
@@ -120,7 +120,6 @@ def main():
     log("Starting to load data from: {}".format(args.dataset))
     data = train_val_test_dataset(args.dataset, train_frac=0.1,
                                   val_frac=0.1, seed=42)
-
     log("Done loading data")
     model = make_model(args.hidden, args.levels)
     log(model)
@@ -129,7 +128,7 @@ def main():
     criterion = nn.MSELoss()
     prev_val_mse = float('inf')
     log("Starting training...")
-    for epoch in range(args.epochs):
+    for epoch in range(args.max_epochs):
         for i in range(0, len(data['graphs_train']), args.batchsize):
             g_batch = data['graphs_train'][i:i+args.batchsize]
             y_batch = torch.Tensor(data['y_train'][i:i+args.batchsize])
@@ -151,13 +150,17 @@ def main():
         log(epoch_results_str(epoch, train_res, val_res))
 
         # Stop training if the validation error stops decreasing
-        if val_res['mse'] > prev_val_mse and epoch > args.max_epochs: # do at least 5 epochs
+        if val_res['mse'] > prev_val_mse and epoch > args.min_epochs:
             break
 
         data['graphs_train'], data['y_train'] = shuffle(data['graphs_train'],
                                                         data['y_train'],
                                                         random_state=args.seed)
         prev_val_mse = val_res['mse']
+
+    log("Done training. Evaluating model on test data...")
+    test_res = eval_model(model, data['graphs_test'], data['y_test'])
+    log('Test mse: {} Test mae: {}'.format(test_res['mse'], test_res['mae']))
 
 if __name__ == '__main__':
     main()
