@@ -101,7 +101,7 @@ def load_targets(fname, n=-1, dtype=float):
         total_labels = int(f.readline().strip())
         if n < 0:
             n = total_labels
-        assert total_labels > n
+        assert total_labels >= n, "Total labels: {}, n: {}".format(total_labels, n)
         labels = np.zeros(n)
 
         for i in range(n):
