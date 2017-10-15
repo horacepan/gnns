@@ -3,6 +3,9 @@ Currently a work in progress.
 
 
 Usage:
+    To create a pickle file for the graph dataset:
+    python make_pickle.py
+
     python run.py -l {LEVELS} -hi {HIDDEN} -bs {BATCHSIZE} -e {EPOCHS} -lr {LEARNING_RATE}
 
     This will run the molecular fingerprints regressor on the QM9 dataset.
