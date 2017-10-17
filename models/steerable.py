@@ -31,7 +31,7 @@ class Steerable_2D(nn.module):
         num_graphs = len(graphs)
         vtx_features = {}
         final_channels = self.get_nchannels(self.lvls) # num channels at final layer
-        graph_reprs = Variable(torch.zeros(num_graphs, final_channels))  
+        graph_reprs = Variable(torch.zeros(num_graphs, final_channels))
 
         for i, graph in enumerate(graphs):
             vtx_features = {}
@@ -39,7 +39,7 @@ class Steerable_2D(nn.module):
             self.forward_single_graph(g, vtx_features)
             g_repr = self.collapse_vtx_features(vtx_features)
             graph_reprs[i].add(g_repr)
-        
+
         output = self.fc_layer(graph_reprs)
         return output
 
@@ -63,7 +63,7 @@ class Steerable_2D(nn.module):
             graph: Graph object
             vtx_features: dict of dicts
             IE: vtx_features[l][v] gives a torch.Tensor of the vertex v's representation at level l
-            
+
             Compute the vertex representations at each level for each vertice in the graph
         '''
         vtx_features = {l: {} for l in range(self.lvls+1)}
@@ -73,10 +73,10 @@ class Steerable_2D(nn.module):
                 reduced_adj_mat = Variable(graph.get_adj_mat(v, lvl), requires_grad=False)
                 nchannels = self.get_nchannels(lvl)
                 k = self.rfield_size(lvl)
-                aggregate = Variable(torch.zeros((k, k, nchannels), requires_grad=True)
+                aggregate = Variable(torch.zeros((k, k, nchannels), requires_grad=True))
 
                 # TODO: implement get_receptive_field, chi_matrix(rename maybe) in graph.py
-                for w in graph.get_receptive_field(v, receptive_field_size)
+                for w in graph.get_receptive_field(v, k):
                     chi_matrix = Variable(graph.chi_matrix(v, w, lvl), requires_grad=False)
                     nbr_feat = vtx_features[lvl-1][w] # should be a Variable already
 
