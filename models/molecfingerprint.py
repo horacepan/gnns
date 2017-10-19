@@ -31,7 +31,7 @@ class MolecFingerprintNet(nn.Module):
 
         for lvl in range(1, levels+1):
             # See page 3 of algorithm 2 in
-            # https://arxiv.org/abs/1603.0085
+            # https://arxiv.org/abs/1509.09292
             # Hidden weights
             setattr(self, 'H_%d' %lvl, nn.Linear(self.w_sizes[lvl]['in'], self.w_sizes[lvl]['out']))
             # Output weights
