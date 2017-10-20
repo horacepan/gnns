@@ -123,18 +123,6 @@ def compute_receptive_fields(graph, max_lvls):
                     curr_rfield = curr_rfield.union(rfields[l-1][w])
     return rfields
 
-def chi_matrix(self, graph, v, w, lvl):
-    # do we want to cache these things?
-    v_rfield_curr = graph.neighborhood(v, r)
-    w_rfield_prev = graph.neighborhood(v, r)
-
-    mat = np.zeros((len(v_rfield_curr), len(w_rfield_prev))
-    for i in range(len(v_rfield_curr)):
-        for j in range(len(w_rfield_prev)):
-            if v_rfield_curr[i] ==  w_rfield_curr[j]:
-                mat[i, j] = 1
-    return mat
-
 def floyd_warshall(graph):
     dist = float('inf') * np.ones((len(graph), len(graph)))
     for v in graph.vertices:
