@@ -90,8 +90,9 @@ class Steerable_2D(nn.Module):
                 reduced_adj_mat = Variable(graph.sub_adj(v, lvl), requires_grad=False)
                 k = graph.rfield_size(v, lvl)
                 n = len(graph.neighborhood(v, lvl))
-                channels = self.w_sizes[lvl]['out']
-                aggregate = Variable(torch.zeros((n, k, k, channels, requires_grad=False)))
+                in_channels = self.w_sizes[lvl]['in']
+                out_channels = self.w_sizes[lvl]['out']
+                aggregate = Variable(torch.zeros((n, k, k, in_channels, requires_grad=False)))
                 v_rfield = rfields[lvl][v] # receptive field of vertex v
 
                 for index, w in enumerate(graph.neighborhood(v, lvl)):
@@ -100,10 +101,17 @@ class Steerable_2D(nn.Module):
                     nbr_feat = vtx_features[lvl-1][w] # should be a Variable already
                     aggregate[index] = agregate[index].add(chi.matmul(nbr_feat).matmul(chi.t()))
 
-                collapsed = aggregate.sum(dim=0) # collapse on the neighbors
-
+                aggregate = aggregate.sum(dim=0) # collapse on the neighbors
                 aggregate = aggregate.add(self.adj_param(lvl) * reduced_adj_mat)
-                vtx_features[lvl][v] = self.nonlinearity(self.w(lvl)(aggregate))
+                # Before reshaping aggregate has shape (k, k, in_channels), where k is the size
+                # of the receptive field of vertex v.
+
+                # After mixing channels via the w matrix, we get a tensor
+                # of shape (out_channels, k*k)
+                new_features = self.nonlinearity(self.w(lvl)(aggregate.view(in_channels, -1)))
+
+                # Reshape it to be of size (k, k, out_channels)
+                vtx_features[lvl][v] = new_features.view(k, k, out_channels)
 
         return vtx_features
 

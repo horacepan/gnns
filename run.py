@@ -71,7 +71,7 @@ def get_args():
     Parse command line arguments with argparse
     '''
     parser = argparse.ArgumentParser()
-    parser.add_argument("-d", dest="dataset", type=str, help="name of the pickled dataset",
+    parser.add_argument("-d", dest="dataset", type=str, help="file path of the pickled dataset",
                         default='data/qm9.pickle')
     parser.add_argument("-lf", dest="logfile", type=str, help="name of the file to log to",
                         default=None)
@@ -79,7 +79,7 @@ def get_args():
     parser.add_argument("-hi",dest="hidden", type=int, help="size of hidden layers", default=5)
     parser.add_argument("-bs", dest="batchsize", type=int, help="batch size", default=1)
     parser.add_argument("-e", dest="max_epochs", type=int, help="max epochs", default=10)
-    parser.add_argument("-me", dest="min_epochs", type=int, help="min epochs", default=5)
+    parser.add_argument("-me", dest="min_epochs", type=int, help="min epochs", default=2)
     parser.add_argument("-lr",dest="learning_rate", type=float, help="initial learning rate",
                         default=0.001)
     parser.add_argument("-tf", dest="train_frac", type=float, help="train fraction",default=0.1)
@@ -119,6 +119,7 @@ def main():
     # keys: graphs_train, graphs_val, graphs_test, y_train, y_val, y_test
     # graphs_train/graphs_val/graphs_test: list of Graph objects
     # y_train/y_val/y_test: numpy arrays
+    log("Args are: {}".format(args))
     log("Starting to load data from: {}".format(args.dataset))
     data = train_val_test_dataset(args.dataset, train_frac=args.train_frac,
                                   val_frac=args.val_frac, seed=42)
@@ -162,7 +163,7 @@ def main():
 
     log("Done training. Evaluating model on test data...")
     test_res = eval_model(model, data['graphs_test'], data['y_test'])
-    log('Test mse: {} Test mae: {}'.format(test_res['mse'], test_res['mae']))
+    log('Test rmse: {} Test mae: {}'.format(np.sqrt(test_res['mse']), test_res['mae']))
 
 if __name__ == '__main__':
     main()
