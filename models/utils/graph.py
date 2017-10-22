@@ -12,18 +12,18 @@ class AdjGraph(object):
     This graph class stores the adj list of each vertex and a dict mapping vertex to
     a one-hot encoding of its vertex feature.
     '''
-    def __init__(self, adj_graph=None, adj_list=None, labels=None, labels_dict=None):
+    def __init__(self, adj_graph=None, adj_list=None, vtx_labels=None, labels_dict=None):
         '''
             adj: numpy matrix of the adjacency matrix
-            labels: list of strings of the labels for each vertex
+            vtx_labels: dict of vertex(int) to its discrete label(usually a string/char)
             labels_dict: mapping from label to integer for one hot encoding
         '''
-        self.labels = labels # dont really need this but keep it around for debugging
+        self.vtx_labels = vtx_labels # dont really need this but keep it around for debugging
         self.labels_dict = labels_dict # ditto ^
-        self.size = len(labels)
+        self.size = len(vtx_labels)
         self.vertices = range(self.size)
         self.edges = self.get_edges(adj_list)
-        self.vertex_labels = {}
+        self.one_hot_vertex_labels = {}
         self.adj = np.zeros((self.size, self.size))
         self.feature_mat = np.zeros((self.size, len(labels_dict)))
 
@@ -40,13 +40,13 @@ class AdjGraph(object):
             print("Need to supply the adjacency list OR the entire adjacency graph!")
 
         for v in range(self.size):
-            label_index = labels_dict[labels[v]]
-            self.vertex_labels[v] = one_hot(label_index, max_labels)
+            label_index = labels_dict[vtx_labels[v]]
+            self.one_hot_vertex_labels[v] = one_hot(label_index, max_labels)
 
         for i in range(self.size):
             # self.neighbors[i] is a list of neighbors of i
             self.adj[i][self.neighbors[i]]= 1
-            self.feature_mat[i] = self.vertex_labels[i]
+            self.feature_mat[i] = self.one_hot_vertex_labels[i]
 
     def get_label(self, v):
         '''
@@ -54,7 +54,7 @@ class AdjGraph(object):
             Returns: the label for v
         '''
         assert v < self.size
-        return self.vertex_labels[v]
+        return self.one_hot_vertex_labels[v]
 
     def get_neighbors(self, v):
         '''
@@ -113,7 +113,7 @@ class AdjGraph(object):
         Note that this graph stores:
         - adjacency list(self.neighbors)
         - adjacency matrix(self.adj)
-        - vertex label mapping(self.vertex_labels)
+        - vertex label mapping(self.one_hot_vertex_labels)
         - feature matrix(matrix of size n x num_features)
         - edges(list where index i = list of 
         so these things need to be updated to the permuted verstions
@@ -130,11 +130,11 @@ class AdjGraph(object):
         for v in self.vertices:
             permuted_pos_v = new_order[v]
             permuted_neighbors[permuted_pos_v] = map(lambda z: new_order[z], self.neighbors[v])
-            permuted_vtx_labels[permuted_pos_v] = self.vertex_labels[v]
-            permuted_feat_mat[permuted_pos_v] = self.vertex_labels[v]
-            permuted_labels[permuted_pos_v] = self.labels[v]
+            permuted_vtx_labels[permuted_pos_v] = self.one_hot_vertex_labels[v]
+            permuted_feat_mat[permuted_pos_v] = self.one_hot_vertex_labels[v]
+            permuted_labels[permuted_pos_v] = self.vtx_labels[v]
 
-        return AdjGraph(adj_list=permuted_neighbors, labels=permuted_labels,
+        return AdjGraph(adj_list=permuted_neighbors, vtx_labels=permuted_labels,
                         labels_dict=self.labels_dict)
 
         '''
