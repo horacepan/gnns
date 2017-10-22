@@ -179,10 +179,11 @@ def test_permutation_invariance():
 
     model = Steerable_2D(lvls, w_sizes)
     _, graph_repr = model(_graph)
-    _, graph_repr_2 = model(permuted_graph)
+    _, permuted_graph_repr = model(permuted_graph)
+    print("Graph representation of original graph:")
     print(graph_repr)
-    print(graph_repr_2)
-    pdb.set_trace()
+    print("Graph representation of permuted graph:")
+    print(permuted_graph_repr)
     #_, permuted_graph_repr = model(permuted_graph)
     #assert np.allclose(graph_repr, permuted_graph_repr)
 
