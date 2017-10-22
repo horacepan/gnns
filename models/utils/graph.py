@@ -129,7 +129,7 @@ class AdjGraph(object):
         '''
         if new_order is None:
             # generate a random permutation
-            random.seed(0)
+            random.seed(seed)
             new_order = sorted(self.vertices)
             random.shuffle(new_order)
         else:
@@ -143,13 +143,19 @@ class AdjGraph(object):
         # according to the permutation defined by new_order
         for v in self.vertices:
             permuted_pos_v = new_order[v]
-            permuted_neighbors[permuted_pos_v] = list(map(lambda z: new_order[z],
-                                                      self.neighbors[v]))
+            permuted_neighbors[permuted_pos_v] = sorted(map(lambda z: new_order[z],
+                                                            self.neighbors[v]))
+
             permuted_vtx_labels[permuted_pos_v] = self.vtx_labels[v]
 
-        return AdjGraph(adj_list=permuted_neighbors, vtx_labels=permuted_vtx_labels,
+        permuted_graph = AdjGraph(adj_list=permuted_neighbors, vtx_labels=permuted_vtx_labels,
                         labels_dict=self.labels_dict)
 
+        return permuted_graph
+
+def pp_permutation_mapping(old_order, new_order):
+    for ind, element in enumerate(old_order):
+        print('Element {}: {} --> {}'.format(element, ind, new_order[ind]))
 
 def compute_receptive_fields(graph, max_lvls):
     '''
@@ -195,7 +201,33 @@ def floyd_warshall(graph):
 
     return dist
 
-if __name__ == '__main__':
+def test_permuted():
+    adj_list = [[1, 2, 3], [0], [0], [0, 4], [3]]
+    labels_dict = {'C': 0, 'H': 1, 'O': 2}
+    vtx_labels = {0: 'A0', 1: 'A1', 2: 'A2', 3: 'A3', 4: 'A4'}
+    labels_dict = {l: int(l[1]) for l in vtx_labels.values()}
+    graph = AdjGraph(adj_list=adj_list, vtx_labels=vtx_labels, labels_dict=labels_dict)
+    new_order= [4, 3, 2, 1, 0]
+    permuted_vtx_labels = {0: 'A4', 1: 'A3', 2: 'A2', 3: 'A1', 4: 'A0'}
+    permuted_nbrs_lst = [[1], [0, 4], [4], [4], [1, 2, 3]]
+
+    permuted_graph = graph.permuted(new_order=new_order)
+
+    pp_permutation_mapping(graph.vertices, new_order)
+    print("old neighbors list: {}".format(graph.neighbors))
+    print("new neighbors list: {}".format(permuted_graph.neighbors))
+
+    print("old vtx_labels dict: {}".format(graph.vtx_labels))
+    print("new vtx_labels dict: {}".format(permuted_graph.vtx_labels))
+
+    print("old adj matrix:")
+    print(graph.adj_matrix)
+    print("permuted adj matrix:")
+    print(permuted_graph.adj_matrix)
+    assert permuted_graph.neighbors == permuted_nbrs_lst
+    assert permuted_graph.vtx_labels == permuted_vtx_labels
+
+def test():
     g = np.eye(3)
     labels = ['a', 'b', 'c']
     adj_list = [[1, 2, 3], [0], [0], [0, 4], [3]]
@@ -207,4 +239,6 @@ if __name__ == '__main__':
     print(g.sub_adj([0, 1, 2]))
     print("Sub adj of vertices 1, 3, 4")
     print(g.sub_adj([1, 3, 4]))
-    pdb.set_trace()
+
+if __name__ == '__main__':
+    test_permuted()

@@ -25,8 +25,11 @@ class Steerable_2D(nn.Module):
         '''
         Args:
             lvls: number of layers
-            max_k: max size of receptive field
-            channesl: number of channels(lenght of vertex labels)
+            w_sizes: dict of the following format: {int: {'in': int, 'out': int}}
+                w_sizes[L]['in'] denotes the number of in channels at lvl L
+                w_sizes[L]['out'] denotes the number of out channels at lvl L
+            nonlinearity: torch function for the nonlinearity to apply at each layer
+            mode: string. If the mode is mix, the weight matrices will mix the channels
         '''
         super(Steerable_2D, self).__init__()
         self.mode = mode
@@ -39,11 +42,10 @@ class Steerable_2D(nn.Module):
     def forward(self, graph):
         '''
         Args:
-            graphs: list of Graph objects
-            or
-            graph: a Graph object
+            graph: an AdjGraph object
+        Returns:
+            tuple of (float prediction, Variable of the graph representation)
         '''
-
 
         '''
         vtx_features = {}
@@ -65,6 +67,8 @@ class Steerable_2D(nn.Module):
         return output
         '''
 
+        # vtx_features will be a dict of dicsts where
+        # vtx_features[lvl][v] is the vertex representation of v at level lvl
         vtx_features = {lvl: {} for lvl in range(self.lvls)}
         self.init_base_features(graph, vtx_features)
         self.forward_single_graph(graph, vtx_features)
@@ -101,13 +105,13 @@ class Steerable_2D(nn.Module):
 
         for lvl in range(1, self.lvls):
             for v in graph.vertices:
-                k = len(rfields[lvl][v])
+                v_rfield = rfields[lvl][v] # receptive field of vertex v at level lvl
+                k = len(v_rfield)
                 n = len(graph.neighborhood(v, lvl))
                 in_channels = self.w_sizes[lvl]['in']
                 out_channels = self.w_sizes[lvl]['out']
                 aggregate = Variable(torch.zeros((n, in_channels, k, k)), requires_grad=False)
-                reduced_adj_mat = Variable(torch.Tensor(graph.sub_adj(rfields[lvl][v])), requires_grad=False)
-                v_rfield = rfields[lvl][v] # receptive field of vertex v
+                reduced_adj_mat = Variable(torch.Tensor(graph.sub_adj(v_rfield)), requires_grad=False)
 
                 for index, w in enumerate(graph.neighborhood(v, lvl)):
                     w_rfield_prev = rfields[lvl-1][w] # receptive field of vertex w
@@ -122,10 +126,8 @@ class Steerable_2D(nn.Module):
 
                 # After mixing channels via the w matrix, we get a tensor
                 # of shape (out_channels, k*k)
-                try:
-                    new_features = self.nonlinearity(self.w(lvl)(aggregate.view(k*k, -1)))
-                except:
-                    pdb.set_trace()
+                new_features = self.nonlinearity(self.w(lvl)(aggregate.view(k*k, -1)))
+                #new_features = self.nonlinearity(self.linear_transform(lvl, aggregate.view(k*k, -1)))
                 # new features will be of size k*k, new_channels
                 # Reshape it to be of size (k, k, out_channels)
                 vtx_features[lvl][v] = new_features.view(out_channels, k, k)
@@ -133,17 +135,46 @@ class Steerable_2D(nn.Module):
         return vtx_features
 
     def init_base_features(self, graph, vtx_features):
+        '''
+        Fills vtx_features with the level 0 representations of the vertices
+        of the given graph
+
+        Args:
+            graph: AdjGraph object
+            vtx_features: dict to fill with vtx features
+                IE: vtx_features[l][v] gives a torch.Tensor of the vertex v's
+                    representation at level l
+        '''
         for v in graph.vertices:
             # vlabel is a numpy array
-            vlabel = graph.get_label(v) 
+            vlabel = graph.get_label(v)
             vlabel = torch.Tensor(vlabel.reshape((len(vlabel), 1, 1)))
             vtx_features[0][v] = Variable(vlabel, requires_grad=False)
 
     def w(self, lvl):
+        '''
+        Returns:
+            The linear layer at level lvl
+        '''
         return getattr(self, 'w_%d' %lvl)
 
+    def linear_transform(self, lvl, input):
+        '''
+        Apply the appropriate linear transform according to the "mode" of
+        this network.
+        '''
+        if self.mode == 'mix':
+            return self.w(lvl)(input)
+        else:
+            pass
+
+
+
     def adj_param(self, lvl):
-        assert 0 <= lvl <= self.lvls
+        '''
+        Returns the learnable parameter that scales the adjacency matrix at level lvl
+        '''
+        assert 0 <= lvl < self.lvls
         return getattr(self, 'adj_lambda_%d' %lvl)
 
     def collapse_vtx_features(self, vtx_features):
@@ -162,13 +193,18 @@ class Steerable_2D(nn.Module):
 
         return graph_repr
 
-def test_permutation_invariance():
+def test_permutation_invariance(_graph=None):
+    '''
+    Creates a simple graph
+    '''
     torch.manual_seed(seed=0)
-    adj_list = [[1, 2, 3], [0], [0], [0, 4], [3]]
-    labels_dict = {'C': 0, 'H': 1, 'O': 2}
-    vtx_labels = {0: 'C', 1: 'H', 2: 'H', 3: 'H', 4: 'O'}
-    _graph = AdjGraph(adj_list=adj_list, vtx_labels=vtx_labels, labels_dict=labels_dict)
-    permuted_graph = _graph.permuted()
+    if _graph is None:
+        adj_list = [[1, 2, 3], [0], [0], [0, 4], [3]]
+        labels_dict = {'C': 0, 'H': 1, 'O': 2}
+        vtx_labels = {0: 'C', 1: 'H', 2: 'H', 3: 'H', 4: 'O'}
+        _graph = AdjGraph(adj_list=adj_list, vtx_labels=vtx_labels, labels_dict=labels_dict)
+
+    permuted_graph = _graph.permuted(seed=0)
 
     # model params
     lvls = 3
@@ -179,13 +215,15 @@ def test_permutation_invariance():
         w_sizes[lvl]['in'] = w_sizes[lvl-1]['out']
         w_sizes[lvl]['out'] = out_channel_size
 
+    # feed both graphs through the network
     model = Steerable_2D(lvls, w_sizes)
     _, graph_repr = model(_graph)
     _, permuted_graph_repr = model(permuted_graph)
+
     print("Graph representation of original graph:")
-    print(graph_repr)
+    print(graph_repr.data)
     print("Graph representation of permuted graph:")
-    print(permuted_graph_repr)
+    print(permuted_graph_repr.data)
     assert graph_repr.data.equal(permuted_graph_repr.data), "Graph reprs are not equal!"
 
 if __name__ == '__main__':
