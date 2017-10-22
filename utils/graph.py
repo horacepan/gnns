@@ -1,12 +1,10 @@
+import random
 import numpy as np
 import pdb
 
 def one_hot(index, num_feats):
     vec = np.zeros(num_feats)
-    try:
-        vec[index] = 1
-    except:
-        pdb.set_trace()
+    vec[index] = 1
     return vec
 
 class AdjGraph(object):
@@ -77,23 +75,20 @@ class AdjGraph(object):
     def __len__(self):
         return self.size
 
-    def sub_adj(self, v, radius, receptive_field):
+    def sub_adj(self, vertices):
         # get the sub adjacency matrix of the n-closest nbrs
         # adj matrix is in the order of the vertices
-        sub_adj_mat = np.zeros((receptive_field, receptive_field))
 
-        # note that neighborhood will include v
-        nbrs = self.neighborhood(v, radius)
-        nbrs.sort(key=lambda w: self.shortest_path[v, w])
-        nbrs = nbrs[:receptive_field]
+        sub_adj_mat = np.zeros((len(vertices), len(vertices)))
+        sorted_vs = sorted(vertices)
 
         # now fill in the adj_matrix
-        for i in range(len(nbrs)):
-            for j in range(len(nbrs)):
-                a = nbrs[i]
-                b = nbrs[j]
-                sub_adj_mat[i, j] = 1 if self.shortest_path[a, b] > 0 else 0
-                sub_adj_mat[j, i] = sub_adj_mat[i, j]
+        for i in range(len(sorted_vs)):
+            for j in range(len(sorted_vs)):
+                v = sorted_vs[i]
+                w = sorted_vs[j]
+                sub_adj_mat[i, j] = self.adj[v, w]
+                sub_adj_mat[j, i] = self.adj[w, v]
 
         return sub_adj_mat
 
@@ -110,9 +105,51 @@ class AdjGraph(object):
             rfield += (1 if self.shortest_path[v, w] > 0 else 0)
         return rfield
 
+    def permuted(self, perm_matrix=None):
+        '''
+        If perm_matrix is not given, generate a random permutation
+        Apply the permutation to the vertices.
+
+        Note that this graph stores:
+        - adjacency list(self.neighbors)
+        - adjacency matrix(self.adj)
+        - vertex label mapping(self.vertex_labels)
+        - feature matrix(matrix of size n x num_features)
+        - edges(list where index i = list of 
+        so these things need to be updated to the permuted verstions
+        '''
+        new_order = sorted(self.vertices)
+        random.shuffle(new_order)
+        print("New permutation: {}".format(new_order))
+        permuted_neighbors = [None for i in range(self.size)]
+        permuted_adj = np.zeros((len(self.vertices), len(self.vertices)))
+        permuted_vtx_labels = {}
+        permuted_labels = {}
+        permuted_feat_mat = np.zeros((self.size, len(self.labels_dict)))
+
+        # note vertices should be sorted
+        for v in self.vertices:
+            permuted_pos_v = new_order[v]
+            permuted_neighbors[permuted_pos_v] = map(lambda z: new_order[z], self.neighbors[v])
+            permuted_vtx_labels[permuted_pos_v] = self.vertex_labels[v]
+            permuted_feat_mat[permuted_pos_v] = self.vertex_labels[v]
+            permuted_labels[permuted_pos_v] = self.labels[v]
+
+        return AdjGraph(adj_list=permuted_neighbors, labels=permuted_labels,
+                        labels_dict=self.labels_dict)
+
+        '''
+        for i in self.vertices:
+            for j in self.vertices:
+                i_hat = new_order[i]
+                j_hat = new_order[i]
+                permuted_adj[i_hat, j_hat] = self.adj[i, j]
+                permuted_adj[j_hat, i_hat] = self.adj[j, i]
+        '''
+
 def compute_receptive_fields(graph, max_lvls):
-    rfields = {}
-    for l in lvls:
+    rfields = {lvl: {} for lvl in range(max_lvls)}
+    for l in range(max_lvls):
         for v in graph.vertices:
             if l == 0:
                 rfields[l][v] = set([v])
@@ -121,6 +158,7 @@ def compute_receptive_fields(graph, max_lvls):
                 curr_rfield = rfields[l-1][v]
                 for w in graph.neighbors[v]:
                     curr_rfield = curr_rfield.union(rfields[l-1][w])
+                rfields[l][v] = curr_rfield
     return rfields
 
 def floyd_warshall(graph):
@@ -149,8 +187,8 @@ if __name__ == '__main__':
     labels = {0: 'C', 1: 'H', 2: 'H', 3: 'H', 4: 'O'}
     g = AdjGraph(adj_list=adj_list, labels=labels, labels_dict=labels_dict)
     print(g)
-    print("Sub adj around vertex 2 radius 1 rfield 4")
-    print(g.sub_adj(0, 1, 5))
-    print("Sub adj around vertex 2 radius 1 rfield 2")
-    print(g.sub_adj(0, 2, 5))
+    print("Sub adj of vertices 0, 1, 2")
+    print(g.sub_adj([0, 1, 2]))
+    print("Sub adj of vertices 1, 3, 4")
+    print(g.sub_adj([1, 3, 4]))
     pdb.set_trace()
