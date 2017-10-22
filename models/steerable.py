@@ -159,16 +159,18 @@ class Steerable_2D(nn.Module):
         for v in vtx_features:
             # collapse it so that it's dimension is just the number of channels
             graph_repr = graph_repr.add(vtx_features[self.lvls-1][v].sum(-1).sum(-1))
-            
+
         return graph_repr
 
 def test_permutation_invariance():
-    labels = ['a', 'b', 'c']
+    torch.manual_seed(seed=0)
     adj_list = [[1, 2, 3], [0], [0], [0, 4], [3]]
     labels_dict = {'C': 0, 'H': 1, 'O': 2}
-    labels = {0: 'C', 1: 'H', 2: 'H', 3: 'H', 4: 'O'}
-    _graph = AdjGraph(adj_list=adj_list, labels=labels, labels_dict=labels_dict)
+    vtx_labels = {0: 'C', 1: 'H', 2: 'H', 3: 'H', 4: 'O'}
+    _graph = AdjGraph(adj_list=adj_list, vtx_labels=vtx_labels, labels_dict=labels_dict)
     permuted_graph = _graph.permuted()
+
+    # model params
     lvls = 3
     out_channel_size = 5
     w_sizes = { 0: {'out':3} }
@@ -184,8 +186,7 @@ def test_permutation_invariance():
     print(graph_repr)
     print("Graph representation of permuted graph:")
     print(permuted_graph_repr)
-    #_, permuted_graph_repr = model(permuted_graph)
-    #assert np.allclose(graph_repr, permuted_graph_repr)
+    assert graph_repr.data.equal(permuted_graph_repr.data), "Graph reprs are not equal!"
 
 if __name__ == '__main__':
     test_permutation_invariance()
