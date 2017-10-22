@@ -1,11 +1,11 @@
 import sys
 import numpy as np
 from itertools import chain
-from .file_io import *
+from file_io import *
 from six.moves import cPickle as pickle
 from sklearn.utils import shuffle
 from sklearn.model_selection import train_test_split as sk_train_test_split
-from .graph import AdjGraph
+from graph import AdjGraph
 import time
 import pdb
 
@@ -56,13 +56,15 @@ def gen_graphs(adj_lists, labels, labels_dict):
     '''
     Args:
         adj_lists: list of adjaceny lists for each graph
-        labels: list of labels for each graph
+            IE: adj_lists[i] an adjacency list for graph i
+        labels: list of vertex dictionaries for each graph
+            IE: labels[i] is a dictionary from vertex -> the vertice's discrete label of graph i
         labels_dict: dictionary
     Returns:
         list of Graph objects
     '''
     assert len(adj_lists) == len(labels)
-    return [AdjGraph(adj_list=al, labels=l, labels_dict=labels_dict)
+    return [AdjGraph(adj_list=al, vtx_labels=l, labels_dict=labels_dict)
             for (al, l) in zip(adj_lists, labels)]
 
 
@@ -217,12 +219,12 @@ def make_dataset_pickle(gname, lname, tname, pickle_name, size=-1):
 
 
 if __name__ == '__main__':
-    # Make a pickle file with 100 graphs
+    # Make a pickle file with {sys.argv[1]} graphs
     gname = '../data/qm9.graph'
     lname = '../data/qm9.atoms'
     tname = '../data/qm9.target'
     try:
-        size = sys.argv[1]
+        size = int(sys.argv[1])
     except:
         print("Please enter the number of datapoints from the qm9 dataset to pickle.")
         exit(0)

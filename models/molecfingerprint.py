@@ -75,7 +75,7 @@ class MolecFingerprintNet_Adj(MolecFingerprintNet):
 
         for i, graph in enumerate(graphs):
             graph_feat_tensor = Variable(torch.Tensor(graph.feature_mat), requires_grad=False)
-            adj_mat = Variable(torch.Tensor(graph.adj), requires_grad=False)
+            adj_mat = Variable(torch.Tensor(graph.adj_matrix), requires_grad=False)
             curr_lvl_features = {}
             for lvl in range(1, self.levels + 1):
                 # sum neighboring vertices features

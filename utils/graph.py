@@ -12,60 +12,71 @@ class AdjGraph(object):
     This graph class stores the adj list of each vertex and a dict mapping vertex to
     a one-hot encoding of its vertex feature.
     '''
-    def __init__(self, adj_graph=None, adj_list=None, labels=None, labels_dict=None):
+    def __init__(self, adj_matrix=None, adj_list=None, vtx_labels=None, labels_dict=None):
         '''
-            adj: numpy matrix of the adjacency matrix
-            labels: list of strings of the labels for each vertex
-            labels_dict: mapping from label to integer for one hot encoding
+        Args:
+            adj_matrix: numpy matrix representing the adjacency matrix of the graph
+            adj_list: list of list of vertices
+                IE: adj_list[i] is the list of vertices(ints) that are adjacenct for vertex i
+            vtx_labels: list of strings of the labels for each vertex
+                IE: vtx_labels[i] is the discrete label of vertex i
         '''
-        self.labels = labels # dont really need this but keep it around for debugging
+        self.vtx_labels = vtx_labels # dont really need this but keep it around for debugging
         self.labels_dict = labels_dict # ditto ^
-        self.size = len(labels)
-        self.vertices = range(self.size)
-        self.edges = self.get_edges(adj_list)
-        self.vertex_labels = {}
-        self.adj = np.zeros((self.size, self.size))
+        self.size = len(vtx_labels)
+        self.vertices = list(range(self.size))
+        self.edges = self._gen_edges(adj_list)
+        self.one_hot_vertex_labels = {}
+        self.adj_matrix = adj_matrix
         self.feature_mat = np.zeros((self.size, len(labels_dict)))
 
-        self.shortest_path = floyd_warshall(self)
-        max_labels = len(labels_dict)
+        # self.shortest_path[v, w] gives the length of the shortest path from vertex v to w.
+        # keep it at none when initializing a graph so that we can load datasets faster
+        # construct it later when we need it
+        self.shortest_path = None
 
         if adj_list:
             self.neighbors = adj_list
-        elif adj_graph:
+            self.adj_matrix = np.zeros((self.size, self.size))
+            for v in range(self.size):
+                self.adj_matrix[v][self.neighbors[v]]= 1
+        elif adj_matrix:
             self.neighbors = [None for i in range(self.size)]
             for v in range(self.size):
-                self.neighbors[v] = [i for i in range(self.size) if adj_graph[i, v] == 1]
+                self.neighbors[v] = [i for i in range(self.size) if adj_matrix[v, i] == 1]
         else:
-            print("Need to supply the adjacency list OR the entire adjacency graph!")
+            raise Exception("Need to supply the adjacency list OR the entire adjacency graph!")
 
+        # Fill the one hot vertex labels
         for v in range(self.size):
-            label_index = labels_dict[labels[v]]
-            self.vertex_labels[v] = one_hot(label_index, max_labels)
-
-        for i in range(self.size):
-            # self.neighbors[i] is a list of neighbors of i
-            self.adj[i][self.neighbors[i]]= 1
-            self.feature_mat[i] = self.vertex_labels[i]
+            label_index = labels_dict[vtx_labels[v]]
+            self.one_hot_vertex_labels[v] = one_hot(label_index, len(labels_dict))
+            self.feature_mat[v] = self.one_hot_vertex_labels[v]
 
     def get_label(self, v):
         '''
             v: int for the vertex number in the graph
-            Returns: the label for v
+            Returns: a one hot encoding(numpy array of length {max labels} of the label for v
         '''
         assert v < self.size
-        return self.vertex_labels[v]
+        return self.one_hot_vertex_labels[v]
 
     def get_neighbors(self, v):
-        '''
-            v: int for the vertex number in the graph
+        ''' v: int for the vertex number in the graph
             Returns: a list of the vertex neighbors of v
         '''
         assert v < self.size
         return self.neighbors[v]
 
 
-    def get_edges(self, adj_list):
+    def _gen_edges(self, adj_list):
+        '''
+        Args:
+            adj_list: list of list of vertices
+                IE: adj_list[i] is the list of vertices(ints) that are adjacenct for vertex i
+        Returns:
+            list of (vertex(int), vertex(int)) tuples for each edge in the graph
+        '''
         edges = []
         for i, nbrs in enumerate(adj_list):
             edges.extend([(i, j) for j in nbrs])
@@ -76,78 +87,84 @@ class AdjGraph(object):
         return self.size
 
     def sub_adj(self, vertices):
-        # get the sub adjacency matrix of the n-closest nbrs
-        # adj matrix is in the order of the vertices
-
+        '''
+        Args:
+            vertices: iterable of vertices(int)
+        Returns:
+            numpy matrix of the sub adjacency matrix for the given vertices
+        Note: The order of the vertices of this sub adjacency matrix is given by the
+              order of the vertices in the original graph.
+        '''
         sub_adj_mat = np.zeros((len(vertices), len(vertices)))
         sorted_vs = sorted(vertices)
 
         # now fill in the adj_matrix
         for i in range(len(sorted_vs)):
             for j in range(len(sorted_vs)):
+                # i, j are the order, v/w are the actual vertices
                 v = sorted_vs[i]
                 w = sorted_vs[j]
-                sub_adj_mat[i, j] = self.adj[v, w]
-                sub_adj_mat[j, i] = self.adj[w, v]
+                sub_adj_mat[i, j] = self.adj_matrix[v, w]
+                sub_adj_mat[j, i] = self.adj_matrix[w, v]
 
         return sub_adj_mat
 
     def neighborhood(self, v, r):
-        nbrs = []
-        for w in self.vertices:
-            if self.shortest_path[v, w] <= r:
-                nbrs.append(w)
-        return nbrs
-
-    def rfield_size(self, v, lvls):
-        rfield = 0
-        for w in self.vertices:
-            rfield += (1 if self.shortest_path[v, w] > 0 else 0)
-        return rfield
-
-    def permuted(self, perm_matrix=None):
         '''
-        If perm_matrix is not given, generate a random permutation
-        Apply the permutation to the vertices.
-
-        Note that this graph stores:
-        - adjacency list(self.neighbors)
-        - adjacency matrix(self.adj)
-        - vertex label mapping(self.vertex_labels)
-        - feature matrix(matrix of size n x num_features)
-        - edges(list where index i = list of 
-        so these things need to be updated to the permuted verstions
+        Args:
+            v: vertex(int)
+            r: the radius around v to consider
+        Returns:
+            list of vertices(ints) that are within a distance of r from the given vertex v
         '''
-        new_order = sorted(self.vertices)
-        random.shuffle(new_order)
-        print("New permutation: {}".format(new_order))
+        if self.shortest_path is None:
+            self.shortest_path = floyd_warshall(self)
+        return [w for w in self.vertices if self.shortest_path[v, w] <= r]
+
+    def permuted(self, new_order=None, seed=0):
+        '''
+        Args:
+            new_order: list of vertices(ints) in the desired order
+                This list should contain the ints 0, 1, ..., size-1 in some order.
+            seed: int for random seed
+        Returns:
+            A new AdjGraph object with same structure(same vertex labels and
+            edges) but with a different vertex ordering(according to new_order)
+        '''
+        if new_order is None:
+            # generate a random permutation
+            random.seed(seed)
+            new_order = sorted(self.vertices)
+            random.shuffle(new_order)
+        else:
+            assert len(new_order) == self.size
+            assert sorted(new_order) == self.vertices
+
         permuted_neighbors = [None for i in range(self.size)]
-        permuted_adj = np.zeros((len(self.vertices), len(self.vertices)))
         permuted_vtx_labels = {}
-        permuted_labels = {}
-        permuted_feat_mat = np.zeros((self.size, len(self.labels_dict)))
 
-        # note vertices should be sorted
+        # Compute the new adjacency(neighbors) list and the vertex -> labels mapping
+        # according to the permutation defined by new_order
         for v in self.vertices:
             permuted_pos_v = new_order[v]
-            permuted_neighbors[permuted_pos_v] = map(lambda z: new_order[z], self.neighbors[v])
-            permuted_vtx_labels[permuted_pos_v] = self.vertex_labels[v]
-            permuted_feat_mat[permuted_pos_v] = self.vertex_labels[v]
-            permuted_labels[permuted_pos_v] = self.labels[v]
+            permuted_neighbors[permuted_pos_v] = sorted(map(lambda z: new_order[z],
+                                                            self.neighbors[v]))
 
-        return AdjGraph(adj_list=permuted_neighbors, labels=permuted_labels,
+            permuted_vtx_labels[permuted_pos_v] = self.vtx_labels[v]
+
+        permuted_graph = AdjGraph(adj_list=permuted_neighbors, vtx_labels=permuted_vtx_labels,
                         labels_dict=self.labels_dict)
 
-        '''
-        for i in self.vertices:
-            for j in self.vertices:
-                i_hat = new_order[i]
-                j_hat = new_order[i]
-                permuted_adj[i_hat, j_hat] = self.adj[i, j]
-                permuted_adj[j_hat, i_hat] = self.adj[j, i]
-        '''
+        return permuted_graph
+
+def pp_permutation_mapping(old_order, new_order):
+    for ind, element in enumerate(old_order):
+        print('Element {}: {} --> {}'.format(element, ind, new_order[ind]))
 
 def compute_receptive_fields(graph, max_lvls):
+    '''
+
+    '''
     rfields = {lvl: {} for lvl in range(max_lvls)}
     for l in range(max_lvls):
         for v in graph.vertices:
@@ -162,6 +179,15 @@ def compute_receptive_fields(graph, max_lvls):
     return rfields
 
 def floyd_warshall(graph):
+    '''
+    Use the Floyd Warshall algorithm to compute all pairs shortest paths.
+    Ref: https://en.wikipedia.org/wiki/Floyd%E2%80%93Warshall_algorithm
+    Args:
+        graph: an AdjGraph object
+    Returns:
+        numpy matrix where element (i, j) denotes the length of the shortest path
+        from vertex i to vertex j
+    '''
     dist = float('inf') * np.ones((len(graph), len(graph)))
     for v in graph.vertices:
         dist[v,v] = 0
@@ -179,7 +205,33 @@ def floyd_warshall(graph):
 
     return dist
 
-if __name__ == '__main__':
+def test_permuted():
+    adj_list = [[1, 2, 3], [0], [0], [0, 4], [3]]
+    labels_dict = {'C': 0, 'H': 1, 'O': 2}
+    vtx_labels = {0: 'A0', 1: 'A1', 2: 'A2', 3: 'A3', 4: 'A4'}
+    labels_dict = {l: int(l[1]) for l in vtx_labels.values()}
+    graph = AdjGraph(adj_list=adj_list, vtx_labels=vtx_labels, labels_dict=labels_dict)
+    new_order= [4, 3, 2, 1, 0]
+    permuted_vtx_labels = {0: 'A4', 1: 'A3', 2: 'A2', 3: 'A1', 4: 'A0'}
+    permuted_nbrs_lst = [[1], [0, 4], [4], [4], [1, 2, 3]]
+
+    permuted_graph = graph.permuted(new_order=new_order)
+
+    pp_permutation_mapping(graph.vertices, new_order)
+    print("old neighbors list: {}".format(graph.neighbors))
+    print("new neighbors list: {}".format(permuted_graph.neighbors))
+
+    print("old vtx_labels dict: {}".format(graph.vtx_labels))
+    print("new vtx_labels dict: {}".format(permuted_graph.vtx_labels))
+
+    print("old adj matrix:")
+    print(graph.adj_matrix)
+    print("permuted adj matrix:")
+    print(permuted_graph.adj_matrix)
+    assert permuted_graph.neighbors == permuted_nbrs_lst
+    assert permuted_graph.vtx_labels == permuted_vtx_labels
+
+def test():
     g = np.eye(3)
     labels = ['a', 'b', 'c']
     adj_list = [[1, 2, 3], [0], [0], [0, 4], [3]]
@@ -191,4 +243,6 @@ if __name__ == '__main__':
     print(g.sub_adj([0, 1, 2]))
     print("Sub adj of vertices 1, 3, 4")
     print(g.sub_adj([1, 3, 4]))
-    pdb.set_trace()
+
+if __name__ == '__main__':
+    test_permuted()

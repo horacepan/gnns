@@ -31,7 +31,9 @@ class AdjGraph(object):
         self.feature_mat = np.zeros((self.size, len(labels_dict)))
 
         # self.shortest_path[v, w] gives the length of the shortest path from vertex v to w.
-        self.shortest_path = floyd_warshall(self)
+        # keep it at none when initializing a graph so that we can load datasets faster
+        # construct it later when we need it
+        self.shortest_path = None
 
         if adj_list:
             self.neighbors = adj_list
@@ -115,6 +117,8 @@ class AdjGraph(object):
         Returns:
             list of vertices(ints) that are within a distance of r from the given vertex v
         '''
+        if self.shortest_path is None:
+            self.shortest_path = floyd_warshall(self)
         return [w for w in self.vertices if self.shortest_path[v, w] <= r]
 
     def permuted(self, new_order=None, seed=0):
