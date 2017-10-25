@@ -61,6 +61,11 @@ class AdjGraph(object):
         assert v < self.size
         return self.one_hot_vertex_labels[v]
 
+    def get_scalar_label(self, v):
+        scalar_label = self.labels_dict[self.vtx_labels[v]]
+        assert 0 <= scalar_label <= float('inf')
+        return scalar_label
+
     def get_neighbors(self, v):
         ''' v: int for the vertex number in the graph
             Returns: a list of the vertex neighbors of v
@@ -119,6 +124,10 @@ class AdjGraph(object):
         '''
         if self.shortest_path is None:
             self.shortest_path = floyd_warshall(self)
+
+        if r == 1:
+            return self.neighbors[v]
+
         return [w for w in self.vertices if self.shortest_path[v, w] <= r]
 
     def permuted(self, new_order=None, seed=0):
@@ -176,6 +185,7 @@ def compute_receptive_fields(graph, max_lvls):
                 for w in graph.neighbors[v]:
                     curr_rfield = curr_rfield.union(rfields[l-1][w])
                 rfields[l][v] = curr_rfield
+
     return rfields
 
 def floyd_warshall(graph):

@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from utils.graph import *
 
 def chi_matrix(v_rfield, w_rfield):
-    # v_rfield and w_rfield are lists of vertices(ints)
+    # v_rfield and w_rfield are sets/lists of vertices(ints)
     v_rfield = sorted(v_rfield)
     w_rfield = sorted(w_rfield)
 
@@ -21,7 +21,7 @@ def chi_matrix(v_rfield, w_rfield):
     return mat
 
 class Steerable_2D(nn.Module):
-    def __init__(self, lvls, w_sizes, nonlinearity=F.sigmoid, mode='mix'):
+    def __init__(self, lvls, w_sizes, nonlinearity=F.relu, mode='mix'):
         '''
         Args:
             lvls: number of layers
@@ -36,7 +36,6 @@ class Steerable_2D(nn.Module):
         self.lvls = lvls
         self.w_sizes = w_sizes
         self.nonlinearity = nonlinearity
-        self.model_variables = {}
         self.init_model_variables(lvls, w_sizes)
 
     def forward(self, graph):
@@ -48,39 +47,36 @@ class Steerable_2D(nn.Module):
         '''
 
         '''
-        vtx_features = {}
         num_graphs = len(graphs)
         final_channels = self.w_sizes[self.lvls-1]['out']
         graph_reprs = Variable(torch.zeros(num_graphs, final_channels))
 
         for i, graph in enumerate(graphs):
-            vtx_features = {}
             for v in graph.vertices:
                 vlabel = torch.Tensor(graph.get_label(v)).unsqueeze(0)
-                vtx_features[0][v] = Variable(vlabel, requires_grad=False).unsqueeze(0)
 
-            self.forward_single_graph(g, vtx_features)
-            g_repr = self.collapse_vtx_features(vtx_features) # take only top level?
-            graph_reprs[i] = graph_repres[i].add(g_repr)
+            graph_reprs[i] = self.forward_single_graph(g)
 
         output = self.fc_layer(graph_reprs)
         return output
         '''
 
-        # vtx_features will be a dict of dicsts where
-        # vtx_features[lvl][v] is the vertex representation of v at level lvl
-        vtx_features = {lvl: {} for lvl in range(self.lvls)}
-        self.init_base_features(graph, vtx_features)
-        self.forward_single_graph(graph, vtx_features)
-        g_repr = self.collapse_vtx_features(vtx_features) # take only top level?
+        if isinstance(graph, list):
+            # just do one graph while testing
+            graph = graph[0]
 
+        g_repr = self.forward_single_graph(graph)
         output = self.fc_layer(g_repr)
+
         return output, g_repr
 
     def init_model_variables(self, lvls, w_sizes):
         for lvl in range(1, self.lvls):
             if self.mode == 'mix':
-                setattr(self, 'w_%d' %lvl, nn.Linear(w_sizes[lvl]['in'], w_sizes[lvl]['out']))
+                out_dim = w_sizes[lvl]['out']
+                in_dim = w_sizes[lvl]['in']
+                setattr(self, 'w_%d' %lvl, nn.Linear(in_dim, out_dim))
+                setattr(self, 'w_%d_manual' %lvl, Variable(torch.randn(out_dim, in_dim)))
             else:
                # do the lambda I and lambda 1s instead
                 setattr(self, 'lambda_eye_%d' %lvl, Variable(torch.randn(1), requires_grad=True))
@@ -92,28 +88,32 @@ class Steerable_2D(nn.Module):
 
         self.fc_layer = nn.Linear(self.w_sizes[self.lvls-1]['out'], 1)
 
-    def forward_single_graph(self, graph, vtx_features):
+    def forward_single_graph(self, graph):
         '''
         Args:
             graph: Graph object
             vtx_features: dict of dicts
             IE: vtx_features[l][v] gives a torch.Tensor of the vertex v's representation at level l
 
-            Compute the vertex representations at each level for each vertice in the graph
+            Compute the vertex representations at each level for each vertice in the graph and
+            return the graph representation of this graph
         '''
+
+        vtx_features = self.init_base_features(graph)
         rfields = compute_receptive_fields(graph, self.lvls)
 
         for lvl in range(1, self.lvls):
             for v in graph.vertices:
                 v_rfield = rfields[lvl][v] # receptive field of vertex v at level lvl
+                v_nbrs = graph.neighborhood(v, 1)
                 k = len(v_rfield)
-                n = len(graph.neighborhood(v, lvl))
+                n = len(v_nbrs)
                 in_channels = self.w_sizes[lvl]['in']
                 out_channels = self.w_sizes[lvl]['out']
                 aggregate = Variable(torch.zeros((n, in_channels, k, k)), requires_grad=False)
                 reduced_adj_mat = Variable(torch.Tensor(graph.sub_adj(v_rfield)), requires_grad=False)
 
-                for index, w in enumerate(graph.neighborhood(v, lvl)):
+                for index, w in enumerate(v_nbrs):
                     w_rfield_prev = rfields[lvl-1][w] # receptive field of vertex w
                     chi = Variable(chi_matrix(v_rfield, w_rfield_prev), requires_grad=False)
                     nbr_feat = vtx_features[lvl-1][w] # should be a Variable already
@@ -126,15 +126,16 @@ class Steerable_2D(nn.Module):
 
                 # After mixing channels via the w matrix, we get a tensor
                 # of shape (out_channels, k*k)
-                new_features = self.nonlinearity(self.w(lvl)(aggregate.view(k*k, -1)))
-                #new_features = self.nonlinearity(self.linear_transform(lvl, aggregate.view(k*k, -1)))
+                new_features = self.nonlinearity(self.linear_transform(lvl, aggregate.view(k*k, -1)))
+
                 # new features will be of size k*k, new_channels
                 # Reshape it to be of size (k, k, out_channels)
                 vtx_features[lvl][v] = new_features.view(out_channels, k, k)
 
-        return vtx_features
+        graph_repr = self.collapse_vtx_features(vtx_features)
+        return graph_repr
 
-    def init_base_features(self, graph, vtx_features):
+    def init_base_features(self, graph):
         '''
         Fills vtx_features with the level 0 representations of the vertices
         of the given graph
@@ -145,11 +146,20 @@ class Steerable_2D(nn.Module):
                 IE: vtx_features[l][v] gives a torch.Tensor of the vertex v's
                     representation at level l
         '''
+        vtx_features = { lvl: {} for lvl in range(self.lvls) }
+
         for v in graph.vertices:
             # vlabel is a numpy array
+            #vlabel = graph.get_scalar_label(v)
             vlabel = graph.get_label(v)
-            vlabel = torch.Tensor(vlabel.reshape((len(vlabel), 1, 1)))
+            if isinstance(vlabel, (int, float)):
+                vlabel = torch.Tensor([vlabel]).view(1,1,1)
+            else:
+                vlabel = torch.Tensor(vlabel.reshape((len(vlabel), 1, 1)))
+
             vtx_features[0][v] = Variable(vlabel, requires_grad=False)
+
+        return vtx_features
 
     def w(self, lvl):
         '''
@@ -158,12 +168,21 @@ class Steerable_2D(nn.Module):
         '''
         return getattr(self, 'w_%d' %lvl)
 
+    def w_manual(self, lvl):
+        '''
+        Returns:
+            The weight matrix for the linear layer at level lvl
+        '''
+
+        return getattr(self, 'w_%d_manual' %lvl)
+
     def linear_transform(self, lvl, input):
         '''
         Apply the appropriate linear transform according to the "mode" of
         this network.
         '''
         if self.mode == 'mix':
+            #return F.linear(input, self.w_manual(lvl))
             return self.w(lvl)(input)
         else:
             pass
@@ -207,7 +226,7 @@ def test_permutation_invariance(_graph=None):
     permuted_graph = _graph.permuted(seed=0)
 
     # model params
-    lvls = 3
+    lvls = 2
     out_channel_size = 5
     w_sizes = { 0: {'out':3} }
     for lvl in range(1, lvls):
@@ -218,6 +237,7 @@ def test_permutation_invariance(_graph=None):
     # feed both graphs through the network
     model = Steerable_2D(lvls, w_sizes)
     _, graph_repr = model(_graph)
+    print('=' * 80)
     _, permuted_graph_repr = model(permuted_graph)
 
     print("Graph representation of original graph:")
