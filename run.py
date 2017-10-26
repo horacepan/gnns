@@ -17,14 +17,26 @@ import pdb
 
 LOG = False
 
-def eval_model(net, graphs, targets):
+def eval_classification_model(net, graphs, targets, criterion):
+    # output of net(graph) is softmax thing
+    results = {}
+    outputs = net(graphs)
+    var_targets = Variable(torch.LongTensor(targets.astype(int)))
+
+    _, predictions = torch.max(outputs, 1)
+    acc = torch.sum(predictions.data == var_targets.data) / float(len(predictions))
+    results['loss'] = criterion(outputs, var_targets).data[0]
+    results['acc'] = acc
+    return results
+
+def eval_regression_model(net, graphs, targets, criterion):
     '''
     Args:
         net: a nn.Module
         graphs: list of Graph objects
         targets: a torch.Tensor or numpy array
     Returns:
-        dictionary with mse and mae as keys.
+        dictionary with rmse and mae as keys.
     '''
     if not isinstance(targets, (torch.DoubleTensor, torch.FloatTensor, torch.Tensor)):
         targets = torch.Tensor(targets)
@@ -32,9 +44,18 @@ def eval_model(net, graphs, targets):
     diff = outputs.data.squeeze() - targets
 
     results = {}
-    results['mse'] = torch.mean(diff.mul(diff))
+    results['rmse'] = np.sqrt(torch.mean(diff.mul(diff)))
     results['mae'] = torch.mean(torch.abs(diff))
+    results['loss'] = criterion(outputs, targets).data[0]
     return results
+
+def eval_model(net, graphs, targets, criterion):
+    if net.mode == 'classification':
+        return eval_classification_model(net, graphs, targets, criterion)
+    elif net.mode == 'regression':
+        return eval_regression_model(net, graphs, targets, criterion)
+    else:
+        raise ValueError("Need to pass in a network with mode = classification or regression")
 
 def logline(line, logfile):
     '''
@@ -88,10 +109,39 @@ def get_args():
 
     return parser.parse_args()
 
-def make_model(hidden_size, levels):
-    nfeatures = 5 #C, H, O, F, N
+def get_num_features(dataset_file):
+    if 'MUTAG' in dataset_file:
+        return 7
+    if 'PTC' in dataset_file:
+        return 22
+    if 'PROTEINS' in dataset_file:
+        return 3
+    if 'NCI109' in dataset_file:
+        return 38
+    if 'NCI1' in dataset_file:
+        return 37
+    if 'qm9' in dataset_file or 'QM9' in dataset_file:
+        return 5
+
+def classify_or_regress(dataset_file):
+    regression_datasets = ['qm9', 'QM9']
+    for d in regression_datasets:
+        if d in dataset_file:
+            return 'regression'
+
+    return 'classification'
+def get_criterion(task):
+    if task == 'regression':
+        return nn.MSELoss()
+    else:
+        return nn.NLLLoss()
+
+def make_model(hidden_size, levels, dataset_file):
+    # need to know the number of input features for initializing the network
+    nfeatures = get_num_features(dataset_file)
+    task = classify_or_regress(dataset_file)
     #model = MolecFingerprintNet(levels, nfeatures, hidden_size, F.relu)
-    model = MolecFingerprintNet_Adj(levels, nfeatures, hidden_size, F.relu)
+    model = MolecFingerprintNet_Adj(levels, nfeatures, hidden_size, F.relu, mode=task)
 
     return model
 
@@ -100,15 +150,20 @@ def epoch_results_str(epoch, train_results, val_results):
     Constructs a formatted string with epoch training/validation results
     Args:
         epoch: int of the epoch number
-        train_results: dict with the keys mae and mse
-        val_results: dict with the keys mae and mse
+        train_results: dict with the keys mae and rmse
+        val_results: dict with the keys mae and rmse
     Returns:
         formatted string
     '''
-    result =  "Epoch {} | train mse: {:.5f} train mae: {:.5f} "
-    result += "| val mse: {:.5f} val mae: {:.5f}"
-    result = result.format(epoch, train_results['mse'], train_results['mae'],
-                           val_results['mse'], val_results['mae'])
+    #result =  "Epoch {} | train rmse: {:.5f} train mae: {:.5f} "
+    train_loss = train_results.pop('loss')
+    val_loss = val_results.pop('loss')
+    result =  "Epoch {} | train: {} | val: {}".format(epoch, train_results, val_results)
+    #result += "| val rmse: {:.5f} val mae: {:.5f}"
+    #result = result.format(epoch, train_results['rmse'], train_results['mae'],
+    #                       val_results['rmse'], val_results['mae'])
+    train_results['loss'] = train_loss
+    val_results['loss'] = val_loss
     return result
 
 def main():
@@ -124,17 +179,21 @@ def main():
     data = train_val_test_dataset(args.dataset, train_frac=args.train_frac,
                                   val_frac=args.val_frac, seed=42)
     log("Done loading data")
-    model = make_model(args.hidden, args.levels)
+    model = make_model(args.hidden, args.levels, args.dataset)
     log(model)
 
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
-    criterion = nn.MSELoss()
-    prev_val_mse = float('inf')
+    criterion = get_criterion(model.mode)
+
+    prev_val_loss = float('inf')
     log("Starting training...")
     for epoch in range(args.max_epochs):
         for i in range(0, len(data['graphs_train']), args.batchsize):
             g_batch = data['graphs_train'][i:i+args.batchsize]
-            y_batch = torch.Tensor(data['y_train'][i:i+args.batchsize])
+            if model.mode == 'classification':
+                y_batch = torch.LongTensor(data['y_train'][i:i+args.batchsize].astype(int))
+            else:
+                y_batch = torch.Tensor(data['y_train'][i:i+args.batchsize])
 
             optimizer.zero_grad()
             outputs = model.forward(g_batch)
@@ -145,25 +204,25 @@ def main():
             # Print some things during batches of an epoch for debug purposes
             #if i % 1000 == 0 and i > 0:
             #    t_res = eval_model(model, g_batch, y_batch)
-            #    log('   Epoch {} | Batch {} | mse: {:.5f} | mae: {:.5f}'.format(epoch, i,
-            #        t_res['mse'], t_res['mae']))
+            #    log('   Epoch {} | Batch {} | rmse: {:.5f} | mae: {:.5f}'.format(epoch, i,
+            #        t_res['rmse'], t_res['mae']))
 
-        train_res = eval_model(model, data['graphs_train'], data['y_train'])
-        val_res = eval_model(model, data['graphs_val'], data['y_val'])
+        train_res = eval_model(model, data['graphs_train'], data['y_train'], criterion)
+        val_res = eval_model(model, data['graphs_val'], data['y_val'], criterion)
         log(epoch_results_str(epoch, train_res, val_res))
 
         # Stop training if the validation error stops decreasing
-        if val_res['mse'] > prev_val_mse and epoch > args.min_epochs:
+        if val_res['loss'] > prev_val_loss and epoch > args.min_epochs:
             break
 
         data['graphs_train'], data['y_train'] = shuffle(data['graphs_train'],
                                                         data['y_train'],
                                                         random_state=args.seed)
-        prev_val_mse = val_res['mse']
+        prev_val_loss = val_res['loss']
 
     log("Done training. Evaluating model on test data...")
-    test_res = eval_model(model, data['graphs_test'], data['y_test'])
-    log('Test rmse: {} Test mae: {}'.format(np.sqrt(test_res['mse']), test_res['mae']))
+    test_result = eval_model(model, data['graphs_test'], data['y_test'], criterion)
+    log('Test result: {}'.format(test_result))
 
 if __name__ == '__main__':
     main()

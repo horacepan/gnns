@@ -20,14 +20,20 @@ def gen_h_sizes(input_features, hidden_size, levels):
 class MolecFingerprintNet(nn.Module):
     # The paper calls it "radius" but we use levels for consistency across
     # graph convolution networks.
-    def __init__(self, levels, nfeatures, hidden_size, activation_func):
+    def __init__(self, levels, nfeatures, hidden_size, activation_func, mode='regression'):
         super(MolecFingerprintNet, self).__init__()
         self.w_sizes = gen_w_sizes(nfeatures, hidden_size, levels)
         self.h_sizes = gen_h_sizes(nfeatures, hidden_size, levels)
         self.levels = levels
         self.nfeatures = nfeatures
-        self.fc_output = nn.Linear(self.w_sizes[levels]['out'], 1)
         self.activation_func = activation_func
+        self.mode = mode
+
+        if mode == 'regression':
+            self.fc_output = nn.Linear(self.w_sizes[levels]['out'], 1)
+        elif mode == 'classification':
+            self.fc_output = nn.Linear(self.w_sizes[levels]['out'], 2)
+
 
         for lvl in range(1, levels+1):
             # See page 3 of algorithm 2 in
@@ -58,6 +64,9 @@ class MolecFingerprintNet(nn.Module):
                 vertex_features = curr_lvl_features
 
         output = self.fc_output(fingerprints)
+        if self.mode == 'classification':
+            output = nn.LogSoftmax(output)
+
         return output
 
     def get_w(self, lvl):
@@ -87,4 +96,7 @@ class MolecFingerprintNet_Adj(MolecFingerprintNet):
                 graph_feat_tensor = new_vtx_feature
 
         output = self.fc_output(fingerprints)
+        if self.mode == 'classification':
+            output = nn.LogSoftmax(output)
+
         return output
