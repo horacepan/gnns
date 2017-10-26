@@ -7,6 +7,7 @@ import pdb
 def gen_w_sizes(input_features, hidden_size, levels):
     w_sizes = {i: {'in': hidden_size, 'out': hidden_size} for i in range(1, levels + 1)}
     w_sizes[1]['in'] = input_features
+    w_sizes[0] = {'out': input_features}
     return w_sizes
 
 def gen_h_sizes(input_features, hidden_size, levels):
@@ -20,18 +21,18 @@ def gen_h_sizes(input_features, hidden_size, levels):
 class MolecFingerprintNet(nn.Module):
     # The paper calls it "radius" but we use levels for consistency across
     # graph convolution networks.
-    def __init__(self, levels, nfeatures, hidden_size, activation_func, mode='regression'):
+    def __init__(self, levels, nfeatures, hidden_size, activation_func, task='regression'):
         super(MolecFingerprintNet, self).__init__()
         self.w_sizes = gen_w_sizes(nfeatures, hidden_size, levels)
         self.h_sizes = gen_h_sizes(nfeatures, hidden_size, levels)
         self.levels = levels
         self.nfeatures = nfeatures
         self.activation_func = activation_func
-        self.mode = mode
+        self.task = task
 
-        if mode == 'regression':
+        if task == 'regression':
             self.fc_output = nn.Linear(self.w_sizes[levels]['out'], 1)
-        elif mode == 'classification':
+        elif task == 'classification':
             self.fc_output = nn.Linear(self.w_sizes[levels]['out'], 2)
 
 
@@ -64,8 +65,8 @@ class MolecFingerprintNet(nn.Module):
                 vertex_features = curr_lvl_features
 
         output = self.fc_output(fingerprints)
-        if self.mode == 'classification':
-            output = nn.LogSoftmax(output)
+        if self.task == 'classification':
+            output = F.log_softmax(output)
 
         return output
 
@@ -96,7 +97,7 @@ class MolecFingerprintNet_Adj(MolecFingerprintNet):
                 graph_feat_tensor = new_vtx_feature
 
         output = self.fc_output(fingerprints)
-        if self.mode == 'classification':
+        if self.task == 'classification':
             output = nn.LogSoftmax(output)
 
         return output

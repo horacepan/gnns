@@ -5,6 +5,7 @@ from torch.autograd import Variable
 import torch.nn as nn
 import torch.nn.functional as F
 from utils.graph import *
+from molecfingerprint import gen_w_sizes
 
 def chi_matrix(v_rfield, w_rfield):
     # v_rfield and w_rfield are sets/lists of vertices(ints)
@@ -21,27 +22,27 @@ def chi_matrix(v_rfield, w_rfield):
     return mat
 
 class Steerable_2D(nn.Module):
-    def __init__(self, lvls, w_sizes, nonlinearity=F.relu, mode='mix'):
+    def __init__(self, lvls, input_features, hidden_size, nonlinearity=F.sigmoid,
+                 task='regression', mode='mix'):
         '''
         Args:
             lvls: number of layers
-            w_sizes: dict of the following format: {int: {'in': int, 'out': int}}
-                w_sizes[L]['in'] denotes the number of in channels at lvl L
-                w_sizes[L]['out'] denotes the number of out channels at lvl L
+            input_features: int of number of input channels
             nonlinearity: torch function for the nonlinearity to apply at each layer
             mode: string. If the mode is mix, the weight matrices will mix the channels
         '''
         super(Steerable_2D, self).__init__()
+        self.task = task
         self.mode = mode
         self.lvls = lvls
-        self.w_sizes = w_sizes
+        self.w_sizes = gen_w_sizes(input_features, hidden_size,lvls)
         self.nonlinearity = nonlinearity
-        self.init_model_variables(lvls, w_sizes)
+        self.init_model_variables(lvls, self.w_sizes)
 
-    def forward(self, graph):
+    def forward(self, graphs):
         '''
         Args:
-            graph: an AdjGraph object
+            graphs: list of AdjGraph objects
         Returns:
             tuple of (float prediction, Variable of the graph representation)
         '''
@@ -60,18 +61,26 @@ class Steerable_2D(nn.Module):
         output = self.fc_layer(graph_reprs)
         return output
         '''
+        try:
+            iter(graphs)
+        except:
+            # input is singleton graph probably
+            graphs = [graphs]
 
-        if isinstance(graph, list):
-            # just do one graph while testing
-            graph = graph[0]
+        g_reprs = Variable(torch.zeros(len(graphs), self.w_sizes[self.lvls]['out']))
+        for i, graph in enumerate(graphs):
+            g_reprs[i] = self.forward_single_graph(graph)
 
-        g_repr = self.forward_single_graph(graph)
-        output = self.fc_layer(g_repr)
+        # hacky way of storing graph reprs
+        self._last_repr = g_reprs
+        output = self.fc_layer(g_reprs)
 
-        return output, g_repr
+        if self.task == 'classification':
+            return F.log_softmax(output)
+        return output
 
     def init_model_variables(self, lvls, w_sizes):
-        for lvl in range(1, self.lvls):
+        for lvl in range(1, self.lvls+1):
             if self.mode == 'mix':
                 out_dim = w_sizes[lvl]['out']
                 in_dim = w_sizes[lvl]['in']
@@ -86,7 +95,11 @@ class Steerable_2D(nn.Module):
 
             setattr(self, 'adj_lambda_%d' %lvl, Variable(torch.randn(1), requires_grad=True))
 
-        self.fc_layer = nn.Linear(self.w_sizes[self.lvls-1]['out'], 1)
+        if self.task == 'regression':
+            self.fc_layer = nn.Linear(self.w_sizes[self.lvls]['out'], 1)
+        elif self.task == 'classification':
+            # TODO: number of classes should be a parameter
+            self.fc_layer = nn.Linear(self.w_sizes[self.lvls]['out'], 2)
 
     def forward_single_graph(self, graph):
         '''
@@ -100,14 +113,17 @@ class Steerable_2D(nn.Module):
         '''
 
         vtx_features = self.init_base_features(graph)
-        rfields = compute_receptive_fields(graph, self.lvls)
+        rfields = compute_receptive_fields(graph, self.lvls+1)
 
-        for lvl in range(1, self.lvls):
+        for lvl in range(1, self.lvls+1):
             for v in graph.vertices:
                 v_rfield = rfields[lvl][v] # receptive field of vertex v at level lvl
                 v_nbrs = graph.neighborhood(v, 1)
                 k = len(v_rfield)
                 n = len(v_nbrs)
+                if n == 0:
+                    # isolated vertex doesnt contribute to the graph representation
+                    continue
                 in_channels = self.w_sizes[lvl]['in']
                 out_channels = self.w_sizes[lvl]['out']
                 aggregate = Variable(torch.zeros((n, in_channels, k, k)), requires_grad=False)
@@ -119,7 +135,10 @@ class Steerable_2D(nn.Module):
                     nbr_feat = vtx_features[lvl-1][w] # should be a Variable already
                     aggregate[index] = aggregate[index].add(chi.matmul(nbr_feat).matmul(chi.t()))
 
-                aggregate = aggregate.sum(dim=0) # collapse on the neighbors
+                try:
+                    aggregate = aggregate.sum(dim=0) # collapse on the neighbors
+                except:
+                    pdb.set_trace()
                 aggregate = aggregate.add(self.adj_param(lvl) * reduced_adj_mat)
                 # Before reshaping aggregate has shape (k, k, in_channels), where k is the size
                 # of the receptive field of vertex v.
@@ -146,7 +165,7 @@ class Steerable_2D(nn.Module):
                 IE: vtx_features[l][v] gives a torch.Tensor of the vertex v's
                     representation at level l
         '''
-        vtx_features = { lvl: {} for lvl in range(self.lvls) }
+        vtx_features = { lvl: {} for lvl in range(self.lvls+1) }
 
         for v in graph.vertices:
             # vlabel is a numpy array
@@ -193,7 +212,7 @@ class Steerable_2D(nn.Module):
         '''
         Returns the learnable parameter that scales the adjacency matrix at level lvl
         '''
-        assert 0 <= lvl < self.lvls
+        assert 0 <= lvl <= self.lvls
         return getattr(self, 'adj_lambda_%d' %lvl)
 
     def collapse_vtx_features(self, vtx_features):
@@ -204,11 +223,11 @@ class Steerable_2D(nn.Module):
         Collapse the final level vertex features to nchannels(num channelsof final layer)
         Sum these from all vertices in the graph
         '''
-        graph_repr = Variable(torch.zeros(1, self.w_sizes[self.lvls-1]['out']),
+        graph_repr = Variable(torch.zeros(self.w_sizes[self.lvls]['out']),
                               requires_grad=True)
-        for v in vtx_features:
-            # collapse it so that it's dimension is just the number of channels
-            graph_repr = graph_repr.add(vtx_features[self.lvls-1][v].sum(-1).sum(-1))
+
+        for v, vtx_repr in vtx_features[self.lvls].items():
+            graph_repr = graph_repr.add(vtx_repr.sum(-1).sum(-1))
 
         return graph_repr
 
@@ -227,19 +246,15 @@ def test_permutation_invariance(_graph=None):
 
     # model params
     lvls = 2
-    out_channel_size = 5
-    w_sizes = { 0: {'out':3} }
-    for lvl in range(1, lvls):
-        w_sizes[lvl] = {}
-        w_sizes[lvl]['in'] = w_sizes[lvl-1]['out']
-        w_sizes[lvl]['out'] = out_channel_size
-
+    out_channels = 5
+    in_channels = 3
     # feed both graphs through the network
-    model = Steerable_2D(lvls, w_sizes)
-    _, graph_repr = model(_graph)
+    model = Steerable_2D(lvls, in_channels, out_channels)
+    model(_graph)
+    graph_repr = model._last_repr
     print('=' * 80)
-    _, permuted_graph_repr = model(permuted_graph)
-
+    model(permuted_graph)
+    permuted_graph_repr = model._last_repr
     print("Graph representation of original graph:")
     print(graph_repr.data)
     print("Graph representation of permuted graph:")
